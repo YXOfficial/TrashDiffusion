@@ -181,7 +181,7 @@ class TPSONode:
                                 new_c[key] = new_emb
                                 injected = True
                                 
-                                logging.debug(f"TPSO: Injected | t={t_curr:.2f} | alpha={alpha:.4f} | Interpolation={tpso_use_alpha}")
+                                logging.info(f"TPSO: Injected | t={t_curr:.2f} | alpha={alpha:.4f} | Interpolation={tpso_use_alpha}")
                     
                     if injected:
                         return apply_model(args["input"], args["timestep"], **new_c)
