@@ -31,12 +31,16 @@ class TPSONode:
         if not tpso_enabled:
             return (unet,)
 
+        # Ensure boolean
+        if isinstance(tpso_use_alpha, str):
+            tpso_use_alpha = tpso_use_alpha.lower() in ("true", "1", "yes", "on")
+
         # LR Heuristic
         real_lr = tpso_lr
         if real_lr < 0.05:
             real_lr = 0.1
 
-        logging.info(f"TPSO: Starting Optimization (Target Kappa: {tpso_kappa}, Steps: {tpso_steps}, LR: {real_lr})...")
+        logging.info(f"TPSO: Starting Optimization (Target Kappa: {tpso_kappa}, Steps: {tpso_steps}, LR: {real_lr}, Alpha Scheduler: {tpso_use_alpha})...")
         
         with torch.no_grad():
             original_cond_obj = p.sd_model.get_learned_conditioning(p.prompts)
@@ -179,7 +183,7 @@ class TPSONode:
                                 injected = True
                                 
                                 if not hasattr(unet_wrapper, "injected_logged"):
-                                    logging.warning(f"TPSO DEBUG: INJECTED into {key} at t={t_curr:.2f} with alpha={alpha:.4f}")
+                                    logging.warning(f"TPSO DEBUG: INJECTED into {key} at t={t_curr:.2f} with alpha={alpha:.4f} (Interpolation: {tpso_use_alpha})")
                                     unet_wrapper.injected_logged = True
                     
                     if injected:
