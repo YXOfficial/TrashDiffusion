@@ -31,12 +31,16 @@ class TPSONode:
         if not tpso_enabled:
             return (unet,)
 
+        # Ensure boolean
+        if isinstance(tpso_use_alpha, str):
+            tpso_use_alpha = tpso_use_alpha.lower() in ("true", "1", "yes", "on")
+
         # LR Heuristic
         real_lr = tpso_lr
         if real_lr < 0.05:
             real_lr = 0.1
 
-        logging.info(f"TPSO: Starting Optimization (Target Kappa: {tpso_kappa}, Steps: {tpso_steps}, LR: {real_lr})...")
+        logging.info(f"TPSO: Starting Optimization (Target Kappa: {tpso_kappa}, Steps: {tpso_steps}, LR: {real_lr}, Alpha Scheduler: {tpso_use_alpha})...")
         
         with torch.no_grad():
             original_cond_obj = p.sd_model.get_learned_conditioning(p.prompts)
@@ -125,20 +129,20 @@ class TPSONode:
             # Dynamic Max T Detection (First Step)
             if wrapper_state["max_t"] is None:
                 wrapper_state["max_t"] = float(t_curr)
-                logging.info(f"TPSO: Detected Start Sigma/Timestep = {t_curr:.2f}")
+                
+                # Calculate threshold immediately for logging
+                start_t = wrapper_state["max_t"]
+                thresh_val = start_t * (1.0 - tpso_r)
+                logging.info(f"TPSO: Scheduler Initialized. Start T={start_t:.2f}, Threshold={thresh_val:.2f} (r={tpso_r}).")
+                if tpso_use_alpha:
+                    logging.info(f"TPSO: Alpha Interpolation Active (1.0 -> 0.0) between T={start_t:.2f} and T={thresh_val:.2f}.")
+                else:
+                    logging.info(f"TPSO: Hard Replacement Active (Alpha=1.0 fixed) between T={start_t:.2f} and T={thresh_val:.2f}.")
 
             # Calculate threshold dynamically based on the REAL max_t
-            # threshold = start_t * (1 - r). 
-            # E.g. if start=14.6, r=0.4 => threshold = 14.6 * 0.6 = 8.76. 
-            # All steps with t > 8.76 will get injected.
             max_t = wrapper_state["max_t"]
             threshold = max_t * (1.0 - tpso_r)
             
-            # FORCE DEBUG LOG ONCE
-            if not hasattr(unet_wrapper, "has_logged"):
-                logging.warning(f"TPSO DEBUG: Wrapper Called! t={t_curr:.2f}. Dynamic Threshold={threshold:.2f} (Max={max_t:.2f})")
-                unet_wrapper.has_logged = True
-
             # Injection Logic
             if t_curr > threshold:
                 cond_or_uncond = args.get("cond_or_uncond", [])
@@ -146,7 +150,6 @@ class TPSONode:
                 
                 if cond_indices:
                     # Calculate alpha for interpolation (Eq 11 from paper)
-                    # alpha = (t - T(1-r)) / (rT) -> (t - threshold) / (max_t - threshold)
                     denom = max_t - threshold
                     alpha = 1.0
                     if denom > 1e-5:
@@ -178,9 +181,7 @@ class TPSONode:
                                 new_c[key] = new_emb
                                 injected = True
                                 
-                                if not hasattr(unet_wrapper, "injected_logged"):
-                                    logging.warning(f"TPSO DEBUG: INJECTED into {key} at t={t_curr:.2f} with alpha={alpha:.4f}")
-                                    unet_wrapper.injected_logged = True
+                                logging.info(f"TPSO: Injected | t={t_curr:.2f} | alpha={alpha:.4f} | Interpolation={tpso_use_alpha}")
                     
                     if injected:
                         return apply_model(args["input"], args["timestep"], **new_c)

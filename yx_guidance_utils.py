@@ -102,14 +102,14 @@ def qsilk_micrograin(
     m = 0.5 * (l + h)
     delta = 0.5 * (h - l)
 
-    y = (x32 - m) / (delta + 1e-6)
+    y = (x32 - m) / (delta + 1e-4)
     x_soft = m + delta * torch.tanh(alpha * y)
 
     mu1 = x_soft.mean(dim=dims, keepdim=True)
     var1 = x_soft.var(dim=dims, unbiased=False, keepdim=True)
-    std1 = torch.sqrt(var1 + 1e-6)
+    std1 = torch.sqrt(var1 + 1e-4)
 
-    y2 = (x_soft - mu1) / (std1 + 1e-6)
+    y2 = (x_soft - mu1) / (std1 + 1e-4)
     x_vp = y2 * std0 + mu0
 
     mix = float(max(0.0, min(1.0, vp_mix)))
@@ -198,8 +198,12 @@ def qsilk_aqclip_lite(
     patched = m + delta * torch.tanh(alpha * normed)
 
     x_clipped_flat = fold(patched)
-    norm = fold(unfold(torch.ones_like(x_flat)))
-    x_clipped_flat = x_clipped_flat / (norm + eps)
+    
+    # Normalization map (fold(1))
+    ones = torch.ones_like(x_flat)
+    norm_map = fold(unfold(ones))
+    
+    x_clipped_flat = x_clipped_flat / (norm_map + 1e-4)
     x_clipped = x_clipped_flat.view(b, c, h, w)
 
     return x_clipped.to(dtype=dtype), ema_state
@@ -360,7 +364,7 @@ def make_zeresfdg_base_builder() -> Callable:
         negative_flat = uncond_denoised.reshape(batch_size, -1)
         dot_product = torch.sum(positive_flat * negative_flat, dim=1, keepdim=True)
         squared_norm_negative = torch.sum(negative_flat ** 2, dim=1, keepdim=True) + 1e-8
-        alpha_parallel = dot_product / squared_norm_negative
+        alpha_parallel = torch.clamp(dot_product / squared_norm_negative, min=0.0)
         alpha_parallel = alpha_parallel.view(batch_size, *([1] * (len(original_shape) - 1)))
         base_pred = uncond_denoised * alpha_parallel
         residual = cond_denoised - base_pred
@@ -378,33 +382,29 @@ def make_fdg_modifier(w_low: float, w_high: float, fdg_levels: int) -> Callable:
         else:
             guidance_direction = state.guidance_term
 
-        try:
-            guidance_low_freq_scaled = guidance_direction * w_low
-            guidance_high_freq_scaled = guidance_direction * w_high
-            levels = max(2, int(fdg_levels))
-            low_freq_part_from_low = build_laplacian_pyramid(guidance_low_freq_scaled, levels)[-1]
-            low_freq_part_from_high = build_laplacian_pyramid(guidance_high_freq_scaled, levels)[-1]
+        guidance_low_freq_scaled = guidance_direction * w_low
+        guidance_high_freq_scaled = guidance_direction * w_high
+        levels = max(2, int(fdg_levels))
+        low_freq_part_from_low = build_laplacian_pyramid(guidance_low_freq_scaled, levels)[-1]
+        low_freq_part_from_high = build_laplacian_pyramid(guidance_high_freq_scaled, levels)[-1]
 
-            if low_freq_part_from_high.shape != guidance_high_freq_scaled.shape:
-                low_freq_part_from_high = torch.nn.functional.interpolate(
-                    low_freq_part_from_high,
-                    size=guidance_high_freq_scaled.shape[-2:],
-                    mode="bilinear",
-                    align_corners=False,
-                )
-            if low_freq_part_from_low.shape != guidance_high_freq_scaled.shape:
-                low_freq_part_from_low = torch.nn.functional.interpolate(
-                    low_freq_part_from_low,
-                    size=guidance_high_freq_scaled.shape[-2:],
-                    mode="bilinear",
-                    align_corners=False,
-                )
+        if low_freq_part_from_high.shape != guidance_high_freq_scaled.shape:
+            low_freq_part_from_high = torch.nn.functional.interpolate(
+                low_freq_part_from_high,
+                size=guidance_high_freq_scaled.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
+            )
+        if low_freq_part_from_low.shape != guidance_high_freq_scaled.shape:
+            low_freq_part_from_low = torch.nn.functional.interpolate(
+                low_freq_part_from_low,
+                size=guidance_high_freq_scaled.shape[-2:],
+                mode="bilinear",
+                align_corners=False,
+            )
 
-            high_freq_part = guidance_high_freq_scaled - low_freq_part_from_high
-            final_guidance_term = (high_freq_part + low_freq_part_from_low) * cond_scale
-        except Exception as e:
-            logging.error(f"FDG: Error during frequency blending: {e}. Falling back to standard guidance.")
-            final_guidance_term = state.guidance_term
+        high_freq_part = guidance_high_freq_scaled - low_freq_part_from_high
+        final_guidance_term = (high_freq_part + low_freq_part_from_low) * cond_scale
 
         return GuidanceState(state.base_prediction, final_guidance_term)
 
@@ -421,67 +421,49 @@ def make_zeresfdg_modifier(
     controller_enabled: bool,
     sigma: float = 1.0,
 ):
-    eps = 1e-8
+    eps = 1e-12
     rho = None
     mode_state = None
 
     def gaussian_lowpass(tensor: torch.Tensor) -> torch.Tensor:
-        if tensor.dim() != 4:
-            return tensor
-        kernel_size = int(max(3, 2 * round(3 * sigma) + 1))
-        if kernel_size % 2 == 0:
-            kernel_size += 1
-        try:
-            return gaussian_blur2d(
-                tensor,
-                kernel_size=(kernel_size, kernel_size),
-                sigma=(sigma, sigma),
-                border_type="reflect",
-            )
-        except Exception as e:
-            logging.error(f"ZeResFDG: Gaussian blur failed with error {e}; skipping blur.")
-            return tensor
+        input_dim = tensor.dim()
+        x = tensor.unsqueeze(0) if input_dim == 3 else tensor
+        k_size = int(max(3, 2 * round(3 * sigma) + 1))
+        if k_size % 2 == 0: k_size += 1
+        out = gaussian_blur2d(x, kernel_size=(k_size, k_size), sigma=(sigma, sigma), border_type="reflect")
+        return out.squeeze(0) if input_dim == 3 else out
 
     def ensure_mask(mask, target: torch.Tensor) -> torch.Tensor:
-        if mask is None:
-            return None
+        if mask is None: return None
         if not torch.is_tensor(mask):
             mask = torch.tensor(mask, device=target.device, dtype=target.dtype)
         else:
             mask = mask.to(device=target.device, dtype=target.dtype)
-
-        if mask.dim() == 2:
-            mask = mask.unsqueeze(0).unsqueeze(0)
-        elif mask.dim() == 3:
-            mask = mask.unsqueeze(1)
-
+        if mask.dim() == 2: mask = mask.unsqueeze(0).unsqueeze(0)
+        elif mask.dim() == 3: mask = mask.unsqueeze(1)
         if mask.shape[0] == 1 and target.shape[0] > 1:
             mask = mask.expand(target.shape[0], *mask.shape[1:])
-
         if mask.shape[-2:] != target.shape[-2:]:
             mask = F.interpolate(mask, size=target.shape[-2:], mode="bilinear", align_corners=False)
-
         if mask.shape[1] == 1 and target.shape[1] > 1:
             mask = mask.expand(target.shape[0], target.shape[1], *mask.shape[-2:])
-
         return mask
 
     def apply_mask(tensor: torch.Tensor, mask) -> torch.Tensor:
         mask_tensor = ensure_mask(mask, tensor)
-        if mask_tensor is None:
-            return tensor
+        if mask_tensor is None: return tensor
         return tensor * mask_tensor
 
     def update_mode(ratio: torch.Tensor):
         nonlocal mode_state
         if not controller_enabled:
-            mode_state = torch.ones_like(ratio, dtype=torch.bool)
-            return mode_state
-
+            return torch.ones_like(ratio, dtype=torch.bool)
         if mode_state is None or mode_state.shape != ratio.shape:
             mode_state = ratio > tau_hi
-        mode_state = torch.where(ratio > tau_hi, torch.ones_like(mode_state, dtype=torch.bool), mode_state)
-        mode_state = torch.where(ratio < tau_lo, torch.zeros_like(mode_state, dtype=torch.bool), mode_state)
+        new_mode = mode_state.clone()
+        new_mode = torch.where(ratio > tau_hi, torch.ones_like(new_mode, dtype=torch.bool), new_mode)
+        new_mode = torch.where(ratio < tau_lo, torch.zeros_like(new_mode, dtype=torch.bool), new_mode)
+        mode_state = new_mode
         return mode_state
 
     def modifier(args, state: GuidanceState) -> GuidanceState:
@@ -490,52 +472,87 @@ def make_zeresfdg_modifier(
         cond_denoised = args["cond_denoised"]
         uncond_denoised = args["uncond_denoised"]
         guidance_mask = args.get("guidance_mask") or args.get("mask") or args.get("g")
+        g_mask = ensure_mask(guidance_mask, cond_denoised)
 
-        if cond_scale != 0:
-            residual = state.guidance_term / cond_scale
-        else:
-            residual = state.guidance_term
-
-        delta = cond_denoised - uncond_denoised
-        delta_low = gaussian_lowpass(delta)
-        delta_high = delta - delta_low
-
-        batch_size = delta.shape[0]
-        low_norm = torch.sum(delta_low.reshape(batch_size, -1) ** 2, dim=1)
-        high_norm = torch.sum(delta_high.reshape(batch_size, -1) ** 2, dim=1)
-        r_hf = high_norm / (low_norm + high_norm + eps)
-
+        # 1. FDG Preparation (yc - yu)
+        delta_rescale = cond_denoised - uncond_denoised
+        dl_rescale = gaussian_lowpass(delta_rescale)
+        dh_rescale = delta_rescale - dl_rescale
+        
+        # Spectral Controller Input (r_hf) using Energy (Sum of Squares)
+        batch_size = cond_denoised.shape[0]
+        dims = tuple(range(1, cond_denoised.dim()))
+        
+        low_energy = torch.sum(dl_rescale.reshape(batch_size, -1).to(torch.float32) ** 2, dim=1)
+        high_energy = torch.sum(dh_rescale.reshape(batch_size, -1).to(torch.float32) ** 2, dim=1)
+        r_hf = high_energy / (low_energy + high_energy + eps)
+        r_hf = r_hf.to(cond_denoised.dtype)
+        
+        # EMA Update: rho = beta * rho + (1 - beta) * r_hf
         if rho is None or rho.shape != r_hf.shape:
             rho = r_hf.detach()
         else:
             rho = beta * rho + (1 - beta) * r_hf.detach()
-
+            
         mode = update_mode(rho)
-
-        residual_low = gaussian_lowpass(residual)
-        residual_high = residual - residual_low
-        fdg_residual = w_low * residual_low + w_high * residual_high
-        fdg_residual = apply_mask(fdg_residual, guidance_mask)
-        conservative_term = fdg_residual * cond_scale
-
-        fdg_delta = w_low * delta_low + w_high * delta_high
-        fdg_delta = apply_mask(fdg_delta, guidance_mask)
-        y_cfg = uncond_denoised + cond_scale * fdg_delta
-
-        dims = tuple(range(1, cond_denoised.dim()))
+        m = mode.to(dtype=cond_denoised.dtype).view(batch_size, *([1] * (cond_denoised.dim() - 1)))
+        
         target_std = cond_denoised.std(dim=dims, keepdim=True)
-        y_cfg_std = y_cfg.std(dim=dims, keepdim=True)
-        rescale_factor = torch.where(y_cfg_std > 0, target_std / (y_cfg_std + eps), torch.ones_like(target_std))
-        y_rescaled = y_cfg * rescale_factor
-        rescaled_prediction = alpha * y_rescaled + (1 - alpha) * y_cfg
-        rescale_term = rescaled_prediction - state.base_prediction
 
-        if mode.dtype != torch.bool:
-            mode = mode > 0
-        mode = mode.view(batch_size, *([1] * (rescale_term.dim() - 1)))
-        combined_guidance = rescale_term * mode + conservative_term * (~mode)
+        # --- BRANCH 1: ZERO (Conservative / Zero-Projection) ---
+        # Explicitly calculate projection here to be safe (ignore external base_builder)
+        # Algorithm 1 Step 4(a): alpha_parallel = <yc, yu> / <yu, yu>
+        # NO CLAMPING: Strictly follow the projection math.
+        flat_c = cond_denoised.reshape(batch_size, -1)
+        flat_u = uncond_denoised.reshape(batch_size, -1)
+        dot_prod = torch.sum(flat_c * flat_u, dim=1, keepdim=True)
+        norm_sq = torch.sum(flat_u ** 2, dim=1, keepdim=True) + eps
+        
+        alpha_par = dot_prod / norm_sq
+        alpha_par = alpha_par.view(batch_size, *([1] * (cond_denoised.dim() - 1)))
+        
+        u_proj = uncond_denoised * alpha_par
+        
+        delta_z = cond_denoised - u_proj
+        dl_z = gaussian_lowpass(delta_z)
+        dh_z = delta_z - dl_z
+        
+        fdg_z = w_low * dl_z + w_high * dh_z
+        if g_mask is not None: 
+            fdg_z = fdg_z * g_mask
+            
+        # GuidanceState simply adds base + guidance.
+        # So we MUST multiply by cond_scale here to get the correct magnitude.
+        guidance_z = fdg_z * cond_scale
+        
+        # --- BRANCH 2: RESCALE (Detail-seeking) ---
+        # 1. Simulate y_cfg = yu + s * FDG(yc - yu)
+        fdg_rescale = w_low * dl_rescale + w_high * dh_rescale
+        if g_mask is not None: 
+            fdg_rescale = fdg_rescale * g_mask
+            
+        y_cfg_sim = uncond_denoised + cond_scale * fdg_rescale
+        
+        # 2. Rescale & Blend
+        y_cfg_std = y_cfg_sim.std(dim=dims, keepdim=True)
+        r_factor = target_std / (y_cfg_std + eps)
+        y_cfg_rescaled = y_cfg_sim * r_factor
+        
+        y_target_rescale = alpha * y_cfg_rescaled + (1.0 - alpha) * y_cfg_sim
+        
+        # 3. Calculate Guidance Term
+        # We need (Base + Guidance) = y_target
+        # Since Base for Rescale mode is uncond_denoised,
+        # Guidance = y_target - uncond_denoised
+        guidance_r = y_target_rescale - uncond_denoised
 
-        return GuidanceState(state.base_prediction, combined_guidance)
+        # --- BLENDING ---
+        # Final Base switches between u_proj (Zero mode) and yu (Rescale mode)
+        final_base = (1.0 - m) * u_proj + m * uncond_denoised
+        final_guidance = (1.0 - m) * guidance_z + m * guidance_r
+
+        logging.info(f"ZeResFDG | rho:{rho.mean().item():.4f} | r_hf:{r_hf.mean().item():.4f} | Mode:{'RESCALE' if m.mean() > 0.5 else 'ZERO'}")
+        return GuidanceState(final_base, final_guidance)
 
     return modifier
 
