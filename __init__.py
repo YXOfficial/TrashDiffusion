@@ -2,16 +2,17 @@ from .comfy_support import (
     FDGNodeV2, 
     ZeResFDGNodeV2, 
     CFGZeroNodeV2, 
-    S2GuidanceNodeV2
+    S2GuidanceNodeV2,
+    ASAGNodeV2
 )
 
 # Traditional ComfyUI Node Mappings
-# Mapping các class V2 mới
 NODE_CLASS_MAPPINGS = {
     "YX_FDG_V2": FDGNodeV2,
     "YX_ZeResFDG_V2": ZeResFDGNodeV2,
     "YX_CFGZero_V2": CFGZeroNodeV2,
     "YX_S2Guidance_V2": S2GuidanceNodeV2,
+    "YX_ASAG_V2": ASAGNodeV2,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -19,6 +20,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "YX_ZeResFDG_V2": "YX ZeResFDG Guidance (V2)",
     "YX_CFGZero_V2": "YX CFG-Zero Guidance (V2)",
     "YX_S2Guidance_V2": "YX S2-Guidance (V2)",
+    "YX_ASAG_V2": "YX ASAG Guidance (V2)",
 }
 
 # --- Support for New ComfyUI API (Test-reForge) ---
@@ -34,6 +36,7 @@ try:
                 ZeResFDGNodeV2,
                 CFGZeroNodeV2,
                 S2GuidanceNodeV2,
+                ASAGNodeV2,
             ]
 
     async def comfy_entrypoint() -> CrazyDiffusionExtension:

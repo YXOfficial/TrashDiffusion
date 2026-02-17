@@ -203,3 +203,46 @@ class S2GuidanceNodeV2(BaseNode):
         def patch(self, **kwargs):
             res = self.execute(**kwargs)
             return (res[0],)
+
+class ASAGNodeV2(BaseNode):
+    @classmethod
+    def define_schema(cls) -> "io.Schema":
+        return io.Schema(
+            node_id="YX_ASAG_V2",
+            display_name="YX ASAG Guidance (V2)",
+            category="advanced/model_patches",
+            inputs=[
+                io.Model.Input("model"),
+                io.Float.Input("scale", default=1.5, min=0.0, max=100.0, step=0.1),
+                io.Int.Input("sinkhorn_iters", default=2, min=1, max=8),
+                io.Combo.Input("unet_block", options=["input", "middle", "output"], default="middle"),
+                io.Int.Input("unet_block_id", default=0),
+                io.Float.Input("sigma_start", default=-1.0),
+                io.Float.Input("sigma_end", default=-1.0),
+                io.Float.Input("rescale", default=0.0, min=0.0, max=1.0, step=0.01),
+                io.Combo.Input("rescale_mode", options=["full", "partial", "snf"], default="full"),
+                io.String.Input("unet_block_list", default=""),
+            ],
+            outputs=[io.Model.Output()],
+        )
+
+    @classmethod
+    def execute(cls, **kwargs) -> "io.NodeOutput":
+        from .nodes_asag import ASAGGuidance
+        model = kwargs.pop("model")
+        # Chuyển đổi tên tham số nếu cần
+        res = ASAGGuidance().patch(model, **kwargs)
+        if io: return io.NodeOutput(res[0])
+        return res
+
+    if io is None:
+        @classmethod
+        def INPUT_TYPES(cls):
+            from .nodes_asag import ASAGGuidance
+            return ASAGGuidance.INPUT_TYPES()
+        RETURN_TYPES = ("MODEL",)
+        FUNCTION = "patch"
+        CATEGORY = "advanced/model_patches"
+        def patch(self, **kwargs):
+            res = self.execute(**kwargs)
+            return (res[0],)
