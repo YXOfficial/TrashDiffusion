@@ -1,30 +1,27 @@
-try:
-    from .nodes_fdg import NODE_CLASS_MAPPINGS as FDG_CLASS, NODE_DISPLAY_NAME_MAPPINGS as FDG_DISPLAY
-    from .nodes_zeresfdg import NODE_CLASS_MAPPINGS as ZERES_CLASS, NODE_DISPLAY_NAME_MAPPINGS as ZERES_DISPLAY
-    from .nodes_cfg_zero import NODE_CLASS_MAPPINGS as CFG_CLASS, NODE_DISPLAY_NAME_MAPPINGS as CFG_DISPLAY
-    from .nodes_s2_guidance import NODE_CLASS_MAPPINGS as S2_CLASS, NODE_DISPLAY_NAME_MAPPINGS as S2_DISPLAY
-except ImportError:
-    FDG_CLASS, FDG_DISPLAY = {}, {}
-    ZERES_CLASS, ZERES_DISPLAY = {}, {}
-    CFG_CLASS, CFG_DISPLAY = {}, {}
-    S2_CLASS, S2_DISPLAY = {}, {}
+from .comfy_support import (
+    FDGNodeV2, 
+    ZeResFDGNodeV2, 
+    CFGZeroNodeV2, 
+    S2GuidanceNodeV2
+)
 
 # Traditional ComfyUI Node Mappings
+# Mapping các class V2 mới
 NODE_CLASS_MAPPINGS = {
-    **FDG_CLASS,
-    **ZERES_CLASS,
-    **CFG_CLASS,
-    **S2_CLASS,
+    "YX_FDG_V2": FDGNodeV2,
+    "YX_ZeResFDG_V2": ZeResFDGNodeV2,
+    "YX_CFGZero_V2": CFGZeroNodeV2,
+    "YX_S2Guidance_V2": S2GuidanceNodeV2,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    **FDG_DISPLAY,
-    **ZERES_DISPLAY,
-    **CFG_DISPLAY,
-    **S2_DISPLAY,
+    "YX_FDG_V2": "YX Frequency-Decoupled Guidance (V2)",
+    "YX_ZeResFDG_V2": "YX ZeResFDG Guidance (V2)",
+    "YX_CFGZero_V2": "YX CFG-Zero Guidance (V2)",
+    "YX_S2Guidance_V2": "YX S2-Guidance (V2)",
 }
 
-# --- Support for New ComfyUI API (V2 / Test-reForge) ---
+# --- Support for New ComfyUI API (Test-reForge) ---
 try:
     from comfy_api.latest import ComfyExtension
     from typing_extensions import override
@@ -32,8 +29,12 @@ try:
     class CrazyDiffusionExtension(ComfyExtension):
         @override
         async def get_node_list(self) -> list:
-            # Traditional nodes are already handled by NODE_CLASS_MAPPINGS
-            return []
+            return [
+                FDGNodeV2,
+                ZeResFDGNodeV2,
+                CFGZeroNodeV2,
+                S2GuidanceNodeV2,
+            ]
 
     async def comfy_entrypoint() -> CrazyDiffusionExtension:
         return CrazyDiffusionExtension()
