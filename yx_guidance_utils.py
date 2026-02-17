@@ -382,9 +382,17 @@ def make_fdg_modifier(w_low: float, w_high: float, fdg_levels: int) -> Callable:
         else:
             guidance_direction = state.guidance_term
 
+        # Handle 5D tensors [B, C, T, H, W]
+        original_shape = guidance_direction.shape
+        is_5d = len(original_shape) == 5
+        if is_5d:
+            b, c, t, h, w = original_shape
+            guidance_direction = guidance_direction.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+
         guidance_low_freq_scaled = guidance_direction * w_low
         guidance_high_freq_scaled = guidance_direction * w_high
         levels = max(2, int(fdg_levels))
+        
         low_freq_part_from_low = build_laplacian_pyramid(guidance_low_freq_scaled, levels)[-1]
         low_freq_part_from_high = build_laplacian_pyramid(guidance_high_freq_scaled, levels)[-1]
 
@@ -405,6 +413,9 @@ def make_fdg_modifier(w_low: float, w_high: float, fdg_levels: int) -> Callable:
 
         high_freq_part = guidance_high_freq_scaled - low_freq_part_from_high
         final_guidance_term = (high_freq_part + low_freq_part_from_low) * cond_scale
+
+        if is_5d:
+            final_guidance_term = final_guidance_term.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
 
         return GuidanceState(state.base_prediction, final_guidance_term)
 
@@ -427,10 +438,19 @@ def make_zeresfdg_modifier(
 
     def gaussian_lowpass(tensor: torch.Tensor) -> torch.Tensor:
         input_dim = tensor.dim()
-        x = tensor.unsqueeze(0) if input_dim == 3 else tensor
+        # Handle 5D [B, C, T, H, W]
+        if input_dim == 5:
+            b, c, t, h, w = tensor.shape
+            x = tensor.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+        else:
+            x = tensor.unsqueeze(0) if input_dim == 3 else tensor
+            
         k_size = int(max(3, 2 * round(3 * sigma) + 1))
         if k_size % 2 == 0: k_size += 1
         out = gaussian_blur2d(x, kernel_size=(k_size, k_size), sigma=(sigma, sigma), border_type="reflect")
+        
+        if input_dim == 5:
+            return out.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
         return out.squeeze(0) if input_dim == 3 else out
 
     def ensure_mask(mask, target: torch.Tensor) -> torch.Tensor:
