@@ -494,29 +494,39 @@ def make_zeresfdg_modifier(
         guidance_mask = args.get("guidance_mask") or args.get("mask") or args.get("g")
         g_mask = ensure_mask(guidance_mask, cond_denoised)
 
+        # Handle 5D tensors [B, C, T, H, W] (e.g., Anima video models)
+        original_shape = cond_denoised.shape
+        is_5d = len(original_shape) == 5
+        if is_5d:
+            b, c, t, h, w = original_shape
+            cond_denoised = cond_denoised.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+            uncond_denoised = uncond_denoised.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+            if g_mask is not None:
+                g_mask = g_mask.permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
+
         # 1. FDG Preparation (yc - yu)
         delta_rescale = cond_denoised - uncond_denoised
         dl_rescale = gaussian_lowpass(delta_rescale)
         dh_rescale = delta_rescale - dl_rescale
-        
+
         # Spectral Controller Input (r_hf) using Energy (Sum of Squares)
         batch_size = cond_denoised.shape[0]
         dims = tuple(range(1, cond_denoised.dim()))
-        
+
         low_energy = torch.sum(dl_rescale.reshape(batch_size, -1).to(torch.float32) ** 2, dim=1)
         high_energy = torch.sum(dh_rescale.reshape(batch_size, -1).to(torch.float32) ** 2, dim=1)
         r_hf = high_energy / (low_energy + high_energy + eps)
         r_hf = r_hf.to(cond_denoised.dtype)
-        
+
         # EMA Update: rho = beta * rho + (1 - beta) * r_hf
         if rho is None or rho.shape != r_hf.shape:
             rho = r_hf.detach()
         else:
             rho = beta * rho + (1 - beta) * r_hf.detach()
-            
+
         mode = update_mode(rho)
         m = mode.to(dtype=cond_denoised.dtype).view(batch_size, *([1] * (cond_denoised.dim() - 1)))
-        
+
         target_std = cond_denoised.std(dim=dims, keepdim=True)
 
         # --- BRANCH 1: ZERO (Conservative / Zero-Projection) ---
@@ -527,39 +537,39 @@ def make_zeresfdg_modifier(
         flat_u = uncond_denoised.reshape(batch_size, -1)
         dot_prod = torch.sum(flat_c * flat_u, dim=1, keepdim=True)
         norm_sq = torch.sum(flat_u ** 2, dim=1, keepdim=True) + eps
-        
+
         alpha_par = dot_prod / norm_sq
         alpha_par = alpha_par.view(batch_size, *([1] * (cond_denoised.dim() - 1)))
-        
+
         u_proj = uncond_denoised * alpha_par
-        
+
         delta_z = cond_denoised - u_proj
         dl_z = gaussian_lowpass(delta_z)
         dh_z = delta_z - dl_z
-        
+
         fdg_z = w_low * dl_z + w_high * dh_z
-        if g_mask is not None: 
+        if g_mask is not None:
             fdg_z = fdg_z * g_mask
-            
+
         # GuidanceState simply adds base + guidance.
         # So we MUST multiply by cond_scale here to get the correct magnitude.
         guidance_z = fdg_z * cond_scale
-        
+
         # --- BRANCH 2: RESCALE (Detail-seeking) ---
         # 1. Simulate y_cfg = yu + s * FDG(yc - yu)
         fdg_rescale = w_low * dl_rescale + w_high * dh_rescale
-        if g_mask is not None: 
+        if g_mask is not None:
             fdg_rescale = fdg_rescale * g_mask
-            
+
         y_cfg_sim = uncond_denoised + cond_scale * fdg_rescale
-        
+
         # 2. Rescale & Blend
         y_cfg_std = y_cfg_sim.std(dim=dims, keepdim=True)
         r_factor = target_std / (y_cfg_std + eps)
         y_cfg_rescaled = y_cfg_sim * r_factor
-        
+
         y_target_rescale = alpha * y_cfg_rescaled + (1.0 - alpha) * y_cfg_sim
-        
+
         # 3. Calculate Guidance Term
         # We need (Base + Guidance) = y_target
         # Since Base for Rescale mode is uncond_denoised,
@@ -570,6 +580,11 @@ def make_zeresfdg_modifier(
         # Final Base switches between u_proj (Zero mode) and yu (Rescale mode)
         final_base = (1.0 - m) * u_proj + m * uncond_denoised
         final_guidance = (1.0 - m) * guidance_z + m * guidance_r
+
+        # Restore 5D shape if needed
+        if is_5d:
+            final_base = final_base.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
+            final_guidance = final_guidance.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
 
         logging.info(f"ZeResFDG | rho:{rho.mean().item():.4f} | r_hf:{r_hf.mean().item():.4f} | Mode:{'RESCALE' if m.mean() > 0.5 else 'ZERO'}")
         return GuidanceState(final_base, final_guidance)
