@@ -371,15 +371,8 @@ def make_cfg_ctrl_base_builder(
     initial_sigma: float = None,
 ) -> Callable:
     """
-    Creates a base builder that optionally applies SMC-CFG (Sliding Mode Control CFG).
-    
-    Based on: CFG-Ctrl: Control-Based Classifier-Free Diffusion Guidance (CVPR 2026)
-    https://github.com/THU-SI/CFG-Ctrl
-    
-    SMC-CFG introduces nonlinear feedback via a sliding surface:
-        s_t = (e_t - e_{t-1}) + lambda * e_{t-1}
-        u_sw = -K * sign(s_t)
-    where e_t = v_cond - v_uncond is the guidance error signal.
+    Creates a base builder that applies SMC-CFG (Sliding Mode Control CFG).
+    Exact implementation from https://github.com/THU-SI/CFG-Ctrl
     """
     ctrl_state = CFGCtrlState()
     
@@ -388,53 +381,52 @@ def make_cfg_ctrl_base_builder(
         cond_denoised = args["cond_denoised"]
         uncond_denoised = args["uncond_denoised"]
         
-        # Detect first step by checking if sigma is near initial sigma
+        # Detect first step
         current_sigma = args.get("sigma")
-        is_first_step = False
+        is_first_step = (ctrl_state.step_counter == 0)
         if current_sigma is not None and initial_sigma is not None:
             try:
                 sigma_val = current_sigma[0].item() if torch.is_tensor(current_sigma) else float(current_sigma)
-                is_first_step = abs(sigma_val - initial_sigma) < 1e-5
+                if sigma_val >= initial_sigma * 0.99:
+                    is_first_step = True
             except (TypeError, ValueError, IndexError):
                 pass
         
-        # Reset state on first step
         if is_first_step:
             ctrl_state.reset()
         
-        # Check for warmup (no CFG in early steps)
-        in_warmup = no_cfg_warmup_steps > 0 and ctrl_state.step_counter < no_cfg_warmup_steps
+        # progress_id in original repo starts from 0 for each generation
+        progress_id = ctrl_state.step_counter
+        warmup_no_cfg = no_cfg_warmup_steps > 0 and progress_id < no_cfg_warmup_steps
         
-        if in_warmup:
-            ctrl_state.step_counter += 1
-            # During warmup, use conditional prediction only (no guidance)
-            return GuidanceState(cond_denoised, torch.zeros_like(cond_denoised))
-        
-        # Standard CFG base
         guidance_eps = cond_denoised - uncond_denoised
         
-        if smc_cfg_enable:
-            # SMC-CFG: Sliding Mode Control
+        if smc_cfg_enable and not warmup_no_cfg:
             if ctrl_state.prev_guidance_eps is None:
                 ctrl_state.prev_guidance_eps = guidance_eps.detach()
             
-            # Sliding surface: s = (e_t - e_{t-1}) + lambda * e_{t-1}
+            # s = (e_t - e_{t-1}) + lambda * e_{t-1}
             s = (guidance_eps - ctrl_state.prev_guidance_eps) + smc_cfg_lambda * ctrl_state.prev_guidance_eps
             
-            # Switching control: u_sw = -K * sign(s)
+            # u_sw = -K * sign(s)
             u_sw = -smc_cfg_K * torch.sign(s)
             
-            # Apply switching control to guidance error
+            # guidance_eps = e_t + u_sw
             guidance_eps = guidance_eps + u_sw
             
-            # Update state
+            # state.prev_guidance_eps = guidance_eps.detach()
             ctrl_state.prev_guidance_eps = guidance_eps.detach()
-        
+            
+            ctrl_state.step_counter += 1
+            return GuidanceState(uncond_denoised, guidance_eps * cond_scale)
+
+        if warmup_no_cfg:
+            ctrl_state.step_counter += 1
+            # Return noise_pred_posi (cond_denoised)
+            return GuidanceState(cond_denoised, torch.zeros_like(cond_denoised))
+
         ctrl_state.step_counter += 1
-        base_pred = uncond_denoised
-        guidance_term = guidance_eps * cond_scale
-        
-        return GuidanceState(base_pred, guidance_term)
+        return GuidanceState(uncond_denoised, (cond_denoised - uncond_denoised) * cond_scale)
 
     return builder
 

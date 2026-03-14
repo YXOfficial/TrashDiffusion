@@ -17,8 +17,8 @@ class CFGCtrlProcessor(GuidanceProcessor):
     def __init__(self):
         self.cfg_ctrl_enabled = False
         self.smc_cfg_enable = False
-        self.smc_cfg_lambda = 5.0
-        self.smc_cfg_K = 0.2
+        self.smc_cfg_lambda = 0.05
+        self.smc_cfg_K = 0.3
         self.no_cfg_warmup_steps = 0
 
     def name(self) -> str:
@@ -31,11 +31,11 @@ class CFGCtrlProcessor(GuidanceProcessor):
             
             cfg_ctrl_enabled = gr.Checkbox(label="Enable CFG-Ctrl", value=self.cfg_ctrl_enabled)
             smc_cfg_enable = gr.Checkbox(label="Enable SMC-CFG", value=self.smc_cfg_enable, info="Sliding Mode Control for stability")
-            smc_cfg_lambda = gr.Slider(label="SMC Lambda", minimum=0.0, maximum=100.0, step=0.1, value=self.smc_cfg_lambda, info="Exponential decay coefficient")
-            smc_cfg_K = gr.Slider(label="SMC K (Switching Gain)", minimum=0.0, maximum=10.0, step=0.01, value=self.smc_cfg_K)
+            smc_cfg_lambda = gr.Slider(label="SMC Lambda", minimum=0.0, maximum=100.0, step=0.01, value=self.smc_cfg_lambda, info="Exponential decay coefficient (Default: 0.05, Try 5.0 for Flux/SD3)")
+            smc_cfg_K = gr.Slider(label="SMC K (Switching Gain)", minimum=0.0, maximum=10.0, step=0.01, value=self.smc_cfg_K, info="Gain for sliding mode (Default: 0.3, Try 0.1~0.5)")
             no_cfg_warmup_steps = gr.Slider(label="No-CFG Warmup Steps", minimum=0, maximum=100, step=1, value=self.no_cfg_warmup_steps)
             
-            gr.Markdown("**Recommended:** FLUX: λ=5.0, K=0.2, cfg=2~3 | SD3: λ=5.0, K=0.2, cfg=7.5")
+            gr.Markdown("**Original Repo Recommendations:** FLUX: λ=5.0, K=0.2 | SD3: λ=5.0, K=0.2")
         
         return [cfg_ctrl_enabled, smc_cfg_enable, smc_cfg_lambda, smc_cfg_K, no_cfg_warmup_steps]
 
