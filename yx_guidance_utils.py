@@ -365,7 +365,7 @@ class CFGCtrlState:
 
 def make_cfg_ctrl_base_builder(
     smc_cfg_enable: bool = False,
-    smc_cfg_lambda: float = 0.05,
+    smc_cfg_lambda: float = 5.0,
     smc_cfg_K: float = 0.3,
     no_cfg_warmup_steps: int = 0,
     initial_sigma: float = None,
@@ -373,6 +373,7 @@ def make_cfg_ctrl_base_builder(
     """
     Creates a base builder that applies SMC-CFG (Sliding Mode Control CFG).
     Exact implementation from https://github.com/THU-SI/CFG-Ctrl
+    Modified for Forge stability (Adaptive K based on guidance magnitude).
     """
     ctrl_state = CFGCtrlState()
     
@@ -387,7 +388,7 @@ def make_cfg_ctrl_base_builder(
         if current_sigma is not None and initial_sigma is not None:
             try:
                 sigma_val = current_sigma[0].item() if torch.is_tensor(current_sigma) else float(current_sigma)
-                if sigma_val >= initial_sigma * 0.99:
+                if sigma_val >= initial_sigma * 0.999:
                     is_first_step = True
             except (TypeError, ValueError, IndexError):
                 pass
@@ -395,7 +396,6 @@ def make_cfg_ctrl_base_builder(
         if is_first_step:
             ctrl_state.reset()
         
-        # progress_id in original repo starts from 0 for each generation
         progress_id = ctrl_state.step_counter
         warmup_no_cfg = no_cfg_warmup_steps > 0 and progress_id < no_cfg_warmup_steps
         
@@ -408,10 +408,12 @@ def make_cfg_ctrl_base_builder(
             # s = (e_t - e_{t-1}) + lambda * e_{t-1}
             s = (guidance_eps - ctrl_state.prev_guidance_eps) + smc_cfg_lambda * ctrl_state.prev_guidance_eps
             
-            # u_sw = -K * sign(s)
-            u_sw = -smc_cfg_K * torch.sign(s)
+            # Adaptive u_sw: Scale K by the magnitude of guidance to prevent burning
+            # This makes K a relative factor, which is more stable across models/steps
+            eps_std = torch.std(guidance_eps) + 1e-8
+            u_sw = -smc_cfg_K * torch.sign(s) * eps_std
             
-            # guidance_eps = e_t + u_sw
+            # Update guidance
             guidance_eps = guidance_eps + u_sw
             
             # state.prev_guidance_eps = guidance_eps.detach()
