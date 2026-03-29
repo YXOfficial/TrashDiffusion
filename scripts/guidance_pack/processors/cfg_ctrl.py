@@ -5,12 +5,12 @@ from ..base import GuidanceProcessor
 from ..registry import register_processor
 
 try:
-    from yx_guidance_utils import ensure_guidance_pipeline, get_initial_sigma, make_cfg_ctrl_base_builder
+    from yx_guidance_utils import ensure_guidance_pipeline, get_initial_sigma, make_cfg_ctrl_modifier
 except ImportError:
     import sys
     import os
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")))
-    from yx_guidance_utils import ensure_guidance_pipeline, get_initial_sigma, make_cfg_ctrl_base_builder
+    from yx_guidance_utils import ensure_guidance_pipeline, get_initial_sigma, make_cfg_ctrl_modifier
 
 
 class CFGCtrlProcessor(GuidanceProcessor):
@@ -54,18 +54,11 @@ class CFGCtrlProcessor(GuidanceProcessor):
 
         # Apply
         if self.smc_cfg_enable:
-            patched_unet = p.sd_model.forge_objects.unet.clone()
-            
-            if hasattr(p.sd_model.forge_objects.unet, "_guidance_pipeline"):
-                patched_unet._guidance_pipeline = p.sd_model.forge_objects.unet._guidance_pipeline
-                patched_unet.set_model_sampler_post_cfg_function(
-                    patched_unet._guidance_pipeline.run, "custom_guidance_pipeline"
-                )
-
-            pipeline = ensure_guidance_pipeline(patched_unet)
-            initial_sigma = get_initial_sigma(patched_unet)
-            pipeline.set_base_builder(
-                make_cfg_ctrl_base_builder(
+            pipeline = ensure_guidance_pipeline(p.sd_model.forge_objects.unet)
+            initial_sigma = get_initial_sigma(p.sd_model.forge_objects.unet)
+            pipeline.add_modifier(
+                "cfg_ctrl",
+                make_cfg_ctrl_modifier(
                     smc_cfg_enable=self.smc_cfg_enable,
                     smc_cfg_lambda=self.smc_cfg_lambda,
                     smc_cfg_K=self.smc_cfg_K,
@@ -73,8 +66,6 @@ class CFGCtrlProcessor(GuidanceProcessor):
                     initial_sigma=initial_sigma,
                 )
             )
-            
-            p.sd_model.forge_objects.unet = patched_unet
             p.extra_generation_params["CFG-Ctrl SMC Enable"] = self.smc_cfg_enable
             p.extra_generation_params["CFG-Ctrl Lambda"] = self.smc_cfg_lambda
             p.extra_generation_params["CFG-Ctrl K"] = self.smc_cfg_K

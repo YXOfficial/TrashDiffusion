@@ -357,10 +357,83 @@ class CFGCtrlState:
     def __init__(self):
         self.prev_guidance_eps: torch.Tensor = None
         self.step_counter: int = 0
-    
+
     def reset(self):
         self.prev_guidance_eps = None
         self.step_counter = 0
+
+
+def make_cfg_ctrl_modifier(
+    smc_cfg_enable: bool = False,
+    smc_cfg_lambda: float = 5.0,
+    smc_cfg_K: float = 0.3,
+    no_cfg_warmup_steps: int = 0,
+    initial_sigma: float = None,
+) -> Callable:
+    """
+    Creates a modifier that applies SMC-CFG (Sliding Mode Control CFG) on top of any base builder.
+    This allows CFG-Ctrl to be combined with CFG-Zero or other base builders.
+    Exact implementation from https://github.com/THU-SI/CFG-Ctrl
+    Modified for Forge stability (Adaptive K based on guidance magnitude).
+    """
+    ctrl_state = CFGCtrlState()
+
+    def modifier(args, state: GuidanceState) -> GuidanceState:
+        cond_scale = args["cond_scale"]
+        cond_denoised = args["cond_denoised"]
+        uncond_denoised = args["uncond_denoised"]
+
+        # Detect first step
+        current_sigma = args.get("sigma")
+        is_first_step = (ctrl_state.step_counter == 0)
+        if current_sigma is not None and initial_sigma is not None:
+            try:
+                sigma_val = current_sigma[0].item() if torch.is_tensor(current_sigma) else float(current_sigma)
+                if sigma_val >= initial_sigma * 0.999:
+                    is_first_step = True
+            except (TypeError, ValueError, IndexError):
+                pass
+
+        if is_first_step:
+            ctrl_state.reset()
+
+        progress_id = ctrl_state.step_counter
+        warmup_no_cfg = no_cfg_warmup_steps > 0 and progress_id < no_cfg_warmup_steps
+
+        # Use the guidance_term from the base builder (or previous modifiers)
+        # guidance_eps = cond_denoised - uncond_denoised  # Original approach
+        guidance_eps = state.guidance_term / cond_scale if cond_scale != 0 else state.guidance_term
+
+        if smc_cfg_enable and not warmup_no_cfg:
+            if ctrl_state.prev_guidance_eps is None:
+                ctrl_state.prev_guidance_eps = guidance_eps.detach()
+
+            # s = (e_t - e_{t-1}) + lambda * e_{t-1}
+            s = (guidance_eps - ctrl_state.prev_guidance_eps) + smc_cfg_lambda * ctrl_state.prev_guidance_eps
+
+            # Adaptive u_sw: Scale K by the magnitude of guidance to prevent burning
+            # This makes K a relative factor, which is more stable across models/steps
+            eps_std = torch.std(guidance_eps) + 1e-8
+            u_sw = -smc_cfg_K * torch.sign(s) * eps_std
+
+            # Update guidance
+            guidance_eps = guidance_eps + u_sw
+
+            # state.prev_guidance_eps = guidance_eps.detach()
+            ctrl_state.prev_guidance_eps = guidance_eps.detach()
+
+            ctrl_state.step_counter += 1
+            return GuidanceState(state.base_prediction, guidance_eps * cond_scale)
+
+        if warmup_no_cfg:
+            ctrl_state.step_counter += 1
+            # Return base_prediction only (no guidance)
+            return GuidanceState(state.base_prediction, torch.zeros_like(state.guidance_term))
+
+        ctrl_state.step_counter += 1
+        return GuidanceState(state.base_prediction, state.guidance_term)
+
+    return modifier
 
 
 def make_cfg_ctrl_base_builder(
@@ -372,63 +445,24 @@ def make_cfg_ctrl_base_builder(
 ) -> Callable:
     """
     Creates a base builder that applies SMC-CFG (Sliding Mode Control CFG).
-    Exact implementation from https://github.com/THU-SI/CFG-Ctrl
-    Modified for Forge stability (Adaptive K based on guidance magnitude).
+    Deprecated: Use make_cfg_ctrl_modifier instead for better compatibility.
+    This is kept for backward compatibility.
     """
-    ctrl_state = CFGCtrlState()
-    
+    modifier_fn = make_cfg_ctrl_modifier(
+        smc_cfg_enable=smc_cfg_enable,
+        smc_cfg_lambda=smc_cfg_lambda,
+        smc_cfg_K=smc_cfg_K,
+        no_cfg_warmup_steps=no_cfg_warmup_steps,
+        initial_sigma=initial_sigma,
+    )
+
     def builder(args) -> GuidanceState:
-        cond_scale = args["cond_scale"]
-        cond_denoised = args["cond_denoised"]
-        uncond_denoised = args["uncond_denoised"]
-        
-        # Detect first step
-        current_sigma = args.get("sigma")
-        is_first_step = (ctrl_state.step_counter == 0)
-        if current_sigma is not None and initial_sigma is not None:
-            try:
-                sigma_val = current_sigma[0].item() if torch.is_tensor(current_sigma) else float(current_sigma)
-                if sigma_val >= initial_sigma * 0.999:
-                    is_first_step = True
-            except (TypeError, ValueError, IndexError):
-                pass
-        
-        if is_first_step:
-            ctrl_state.reset()
-        
-        progress_id = ctrl_state.step_counter
-        warmup_no_cfg = no_cfg_warmup_steps > 0 and progress_id < no_cfg_warmup_steps
-        
-        guidance_eps = cond_denoised - uncond_denoised
-        
-        if smc_cfg_enable and not warmup_no_cfg:
-            if ctrl_state.prev_guidance_eps is None:
-                ctrl_state.prev_guidance_eps = guidance_eps.detach()
-            
-            # s = (e_t - e_{t-1}) + lambda * e_{t-1}
-            s = (guidance_eps - ctrl_state.prev_guidance_eps) + smc_cfg_lambda * ctrl_state.prev_guidance_eps
-            
-            # Adaptive u_sw: Scale K by the magnitude of guidance to prevent burning
-            # This makes K a relative factor, which is more stable across models/steps
-            eps_std = torch.std(guidance_eps) + 1e-8
-            u_sw = -smc_cfg_K * torch.sign(s) * eps_std
-            
-            # Update guidance
-            guidance_eps = guidance_eps + u_sw
-            
-            # state.prev_guidance_eps = guidance_eps.detach()
-            ctrl_state.prev_guidance_eps = guidance_eps.detach()
-            
-            ctrl_state.step_counter += 1
-            return GuidanceState(uncond_denoised, guidance_eps * cond_scale)
-
-        if warmup_no_cfg:
-            ctrl_state.step_counter += 1
-            # Return noise_pred_posi (cond_denoised)
-            return GuidanceState(cond_denoised, torch.zeros_like(cond_denoised))
-
-        ctrl_state.step_counter += 1
-        return GuidanceState(uncond_denoised, (cond_denoised - uncond_denoised) * cond_scale)
+        # Start with default base, then apply CFG-Ctrl modifier
+        default_state = GuidanceState(
+            args["uncond_denoised"],
+            (args["cond_denoised"] - args["uncond_denoised"]) * args["cond_scale"]
+        )
+        return modifier_fn(args, default_state)
 
     return builder
 
