@@ -15,7 +15,6 @@ except ImportError:
 
 class CFGCtrlProcessor(GuidanceProcessor):
     def __init__(self):
-        self.cfg_ctrl_enabled = False
         self.smc_cfg_enable = False
         self.smc_cfg_lambda = 5.0
         self.smc_cfg_K = 0.3
@@ -28,25 +27,22 @@ class CFGCtrlProcessor(GuidanceProcessor):
         with gr.Tab(label="CFG-Ctrl"):
             gr.Markdown("CFG-Ctrl: Control-Based Classifier-Free Diffusion Guidance (CVPR 2026)")
             gr.Markdown("SMC-CFG adds nonlinear feedback stabilization for better semantic alignment.")
-            
-            cfg_ctrl_enabled = gr.Checkbox(label="Enable CFG-Ctrl", value=self.cfg_ctrl_enabled)
+
             smc_cfg_enable = gr.Checkbox(label="Enable SMC-CFG", value=self.smc_cfg_enable, info="Sliding Mode Control for stability")
             smc_cfg_lambda = gr.Slider(label="SMC Lambda", minimum=0.0, maximum=100.0, step=0.01, value=self.smc_cfg_lambda, info="Exponential decay coefficient (Default: 5.0)")
             smc_cfg_K = gr.Slider(label="SMC K (Switching Gain)", minimum=0.0, maximum=10.0, step=0.01, value=self.smc_cfg_K, info="Gain for sliding mode (Default: 0.3, Try 0.1~0.5)")
             no_cfg_warmup_steps = gr.Slider(label="No-CFG Warmup Steps", minimum=0, maximum=100, step=1, value=self.no_cfg_warmup_steps)
-            
+
             gr.Markdown("**Recommended:** FLUX: λ=5.0, K=0.2 | SD3: λ=5.0, K=0.2")
-        
-        return [cfg_ctrl_enabled, smc_cfg_enable, smc_cfg_lambda, smc_cfg_K, no_cfg_warmup_steps]
+
+        return [smc_cfg_enable, smc_cfg_lambda, smc_cfg_K, no_cfg_warmup_steps]
 
     def process(self, p, *args):
-        self.cfg_ctrl_enabled, self.smc_cfg_enable, self.smc_cfg_lambda, self.smc_cfg_K, self.no_cfg_warmup_steps = args
+        self.smc_cfg_enable, self.smc_cfg_lambda, self.smc_cfg_K, self.no_cfg_warmup_steps = args
 
         # Check XYZ
         xyz_settings = getattr(p, "_guidance_xyz", {})
         cfg_ctrl_xyz = xyz_settings.get("cfg_ctrl", {})
-        if "cfg_ctrl_enabled" in cfg_ctrl_xyz:
-            self.cfg_ctrl_enabled = str(cfg_ctrl_xyz["cfg_ctrl_enabled"]).lower() == "true"
         if "smc_cfg_enable" in cfg_ctrl_xyz:
             self.smc_cfg_enable = str(cfg_ctrl_xyz["smc_cfg_enable"]).lower() == "true"
         if "smc_cfg_lambda" in cfg_ctrl_xyz:
@@ -57,7 +53,7 @@ class CFGCtrlProcessor(GuidanceProcessor):
             self.no_cfg_warmup_steps = int(cfg_ctrl_xyz["no_cfg_warmup_steps"])
 
         # Apply
-        if self.cfg_ctrl_enabled:
+        if self.smc_cfg_enable:
             patched_unet = p.sd_model.forge_objects.unet.clone()
             
             if hasattr(p.sd_model.forge_objects.unet, "_guidance_pipeline"):
@@ -79,7 +75,6 @@ class CFGCtrlProcessor(GuidanceProcessor):
             )
             
             p.sd_model.forge_objects.unet = patched_unet
-            p.extra_generation_params["CFG-Ctrl Enabled"] = self.cfg_ctrl_enabled
             p.extra_generation_params["CFG-Ctrl SMC Enable"] = self.smc_cfg_enable
             p.extra_generation_params["CFG-Ctrl Lambda"] = self.smc_cfg_lambda
             p.extra_generation_params["CFG-Ctrl K"] = self.smc_cfg_K
@@ -88,12 +83,6 @@ class CFGCtrlProcessor(GuidanceProcessor):
 
     def register_xyz(self, xyz_grid, set_guidance_value_func):
         options = [
-            xyz_grid.AxisOption(
-                label="(CFG-Ctrl) Enabled",
-                type=str,
-                apply=partial(set_guidance_value_func, feature="cfg_ctrl", field="cfg_ctrl_enabled"),
-                choices=lambda: ["True", "False"],
-            ),
             xyz_grid.AxisOption(
                 label="(CFG-Ctrl) SMC Enable",
                 type=str,
