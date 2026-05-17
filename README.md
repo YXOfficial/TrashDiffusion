@@ -1,3 +1,4 @@
+# This project should be personal shi, im not gonna fix this stupid structure
 # ⚠️ Although everything "WORKS" but my implementation code might be inaccuracy, still need someone check it out too
 
 # [Test-Reforge](https://github.com/YXOfficial/Test-reForge)
