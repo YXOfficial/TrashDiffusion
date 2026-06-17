@@ -75,7 +75,7 @@ class AnimaVNAProcessor(GuidanceProcessor):
                 "### Anima VNA\nVelocity Norm Alignment")
             enabled = gr.Checkbox(label="Enable Anima VNA", value=False)
             scale = gr.Slider(label="Contrast Scale", minimum=0.0, maximum=10.0, step=0.1, value=3)
-            blocks_list = gr.Textbox(label="Anima Blocks (e.g. 0-9)", value="9,5")
+            blocks_list = gr.Textbox(label="Anima Blocks (e.g. 0-9)", value="9")
 
             with gr.Row():
                 sigma_start = gr.Slider(label="Sigma Start", minimum=-1.0, maximum=1000.0, step=0.01, value=-1.0)
