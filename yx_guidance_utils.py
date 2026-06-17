@@ -326,29 +326,10 @@ def get_initial_sigma(model) -> float:
 
 def make_cfg_zero_base_builder(zero_init_first_step: bool, initial_sigma: float) -> Callable:
     def builder(args) -> GuidanceState:
-        cond_scale = args["cond_scale"]
-        cond_denoised = args["cond_denoised"]
-        uncond_denoised = args["uncond_denoised"]
-
-        if zero_init_first_step:
-            current_sigma_val = args["sigma"][0].item()
-            if abs(current_sigma_val - initial_sigma) < 1e-5:
-                zero_tensor = uncond_denoised * 0.0
-                return GuidanceState(zero_tensor, zero_tensor)
-
-        original_shape = cond_denoised.shape
-        batch_size = original_shape[0] if len(original_shape) > 0 else 1
-        positive_flat = cond_denoised.reshape(batch_size, -1)
-        negative_flat = uncond_denoised.reshape(batch_size, -1)
-        dot_product = torch.sum(positive_flat * negative_flat, dim=1, keepdim=True)
-        squared_norm_negative = torch.sum(negative_flat ** 2, dim=1, keepdim=True) + 1e-8
-        st_star = dot_product / squared_norm_negative
-        st_star_reshaped = st_star.view(batch_size, *([1] * (len(original_shape) - 1)))
-        base_pred = uncond_denoised * st_star_reshaped
-        guidance_direction = cond_denoised - base_pred
-        guidance_term = guidance_direction * cond_scale
-        return GuidanceState(base_pred, guidance_term)
-
+        w, cond, uncond = args["cond_scale"], args["cond_denoised"], args["uncond_denoised"]
+        dims = tuple(range(1, cond.ndim))
+        s = torch.sum(cond * uncond, dim=dims, keepdim=True) / (torch.sum(uncond ** 2, dim=dims, keepdim=True) + 1e-8)
+        return GuidanceState(uncond * s, (cond - uncond * s) * w)
     return builder
 
 
