@@ -147,23 +147,23 @@ class AnimaVNAProcessor(GuidanceProcessor):
                             def patched_compute_attention(this, q, k, v, transformer_options={}):
                                 patches_cfg = transformer_options.get("patches_replace", {}).get("attn1", {})
                                 if ("blocks", idx) in patches_cfg:
-                                    # [1, 4096, 16, 128]
                                     b, s, h, d = v.shape
                                     orig_dtype = v.dtype
-                                    # 1. Velocity Norm
-                                    v_norm = v.norm(dim=-1, keepdim=True)
-                                    # 2. Refine Velocity Field
-                                    # This is where i set Sharpening/Fidelity.
-                                    scale_factor = 1.15  # Hardcoded value, must be bad
-                                    v_refined = v * (v_norm.clamp(min=1e-6) ** (scale_factor - 1.0))
 
-                                    # 3. Merge Heads to model_channels (2048)
-                                    # [b, s, h, d] -> [b, s, h*d]
-                                    out = v_refined.reshape(b, s, h * d).to(orig_dtype)
+                                    v_norm = v.norm(dim=-1, keepdim=True).clamp(min=1e-8)
+                                    # Looks like 0-28 blocks conflict happening right here
+                                    v_unit = v / v_norm
 
-                                    # 4. Linear Projection
+                                    # New refine type instead of 1.15
+                                    import math
+                                    v_refined = v_unit * math.sqrt(d)
+
+                                    q_len = q.shape[1]
+                                    if v_refined.shape[1] > q_len:
+                                        v_refined = v_refined[:, :q_len, :, :]
+
+                                    out = v_refined.transpose(1, 2).reshape(b, q_len, h * d).to(orig_dtype)
                                     return this.output_dropout(this.output_proj(out))
-
                                 return original_func(q, k, v, transformer_options=transformer_options)
 
                             return patched_compute_attention
