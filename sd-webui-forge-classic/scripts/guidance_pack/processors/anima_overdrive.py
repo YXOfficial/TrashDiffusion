@@ -301,5 +301,8 @@ class AnimaOverdriveProcessor(GuidanceProcessor):
         pass
 
 
-print("[AnimaOverdrive] Processor loaded")
+# NOTE: do NOT print here. Processor load status is reported centrally by
+# guidance_pack_script._load_processors() so the Forge log shows one uniform
+# "[TrashDiffusion]" summary (totals + reasons) instead of one print style
+# per module.
 register_processor(AnimaOverdriveProcessor)

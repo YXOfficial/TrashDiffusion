@@ -60,30 +60,122 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
+# Single log prefix for this extension. Forge's console mixes logs from every
+# extension (Tag Autocomplete, other scripts, ...), so everything we emit at
+# load time goes through TAG below — no per-processor print() allowed.
+TAG = "[TrashDiffusion]"
+
 # Import registry
 from guidance_pack.registry import get_processors
 
-# Dynamically import all processors. One broken processor must not kill the
-# whole pack (upstream restructure often breaks a single `modules.*` import).
-try:
+
+def _failure_hint(exc: BaseException) -> str:
+    """Short actionable hint for common import failures (else '')."""
+    if isinstance(exc, ModuleNotFoundError):
+        missing = str(exc).split("'")
+        mod = missing[1] if len(missing) >= 2 else str(exc)
+        if "ldm_patched" in mod:
+            return (
+                "hint: processor imports 'ldm_patched' directly; "
+                "import via core.forge_compat or backend.sampling.sampling_function instead"
+            )
+        if mod.split(".")[0] in ("backend", "modules", "ldm", "comfy"):
+            return (
+                f"hint: Forge layout module {mod!r} not importable here; "
+                "keep Forge imports lazy/tolerant (see core/forge_compat.py)"
+            )
+        return f"hint: missing third-party dependency {mod!r} (see requirements.txt)"
+    if isinstance(exc, ImportError):
+        return "hint: import failed — check Forge backend restructure / renamed symbol"
+    return ""
+
+
+def _exc_reason(exc: BaseException) -> str:
+    """One-line reason: ExcType: message (at file:line)."""
+    tb = traceback.extract_tb(exc.__traceback__)
+    origin = f" (at {Path(tb[-1].filename).name}:{tb[-1].lineno})" if tb else ""
+    msg = str(exc).strip() or "<no message>"
+    return f"{type(exc).__name__}: {msg}{origin}"
+
+
+def _load_processors() -> dict:
+    """Import every guidance_pack.processors.* module, report ONE summary.
+
+    Returns a dict with keys: found / loaded / skipped / failed, where
+    loaded = [(module, [processor names])], skipped = [(module, reason)],
+    failed = [(module, reason, hint)].
+    """
     import pkgutil
     import importlib
+
     import guidance_pack.processors as _pkg
 
-    _prefix = _pkg.__name__ + "."
-    for _, _name, _is_pkg in pkgutil.iter_modules(_pkg.__path__, _prefix):
-        if _is_pkg:
+    candidates = sorted(
+        (m.name, m.name.rpartition(".")[2])
+        for m in pkgutil.iter_modules(_pkg.__path__, _pkg.__name__ + ".")
+        if not m.ispkg
+    )
+    loaded: list = []
+    skipped: list = []
+    failed: list = []
+
+    for full_name, short in candidates:
+        if short.startswith("_") or short.startswith("test"):
+            skipped.append((full_name, "dev-only file, skipped by name prefix (test* / _*)"))
             continue
-        _short = _name.rpartition(".")[2]
-        if _short.startswith("_") or _short.startswith("test"):
-            continue
+        before = len(get_processors())
         try:
-            importlib.import_module(_name)
-        except Exception as e:
-            logging.error("Guidance Pack: skipping processor %s (%s)", _name, e)
-except Exception as e:
-    logging.error(f"Guidance Pack: Error loading processors: {e}")
-    traceback.print_exc()
+            importlib.import_module(full_name)
+        except Exception as exc:  # one broken processor must not kill the pack
+            reason = _exc_reason(exc)
+            hint = _failure_hint(exc)
+            failed.append((full_name, reason, hint))
+            logging.debug("%s processor import failed: %s\n%s", TAG, full_name, traceback.format_exc())
+            continue
+        new_processors = get_processors()[before:]
+        if not new_processors:
+            failed.append((
+                full_name,
+                "imported OK but registered no processor (missing register_processor() call?)",
+                "",
+            ))
+            continue
+        names: list = []
+        for proc in new_processors:
+            try:
+                names.append(proc.name())
+            except Exception as exc:
+                names.append(f"<name() failed: {_exc_reason(exc)}>")
+        loaded.append((full_name, names))
+
+    total = len(candidates)
+    lines = [
+        f"{TAG} Processors: {total} found | {len(loaded)} loaded | "
+        f"{len(skipped)} skipped | {len(failed)} failed"
+    ]
+    for mod, names in loaded:
+        lines.append(f"{TAG}   loaded: {mod} -> {', '.join(names)}")
+    for mod, reason in skipped:
+        lines.append(f"{TAG}   skipped: {mod} — {reason}")
+    for mod, reason, hint in failed:
+        detail = f"{TAG}   failed: {mod} — {reason}"
+        if hint:
+            detail += f" — {hint}"
+        lines.append(detail)
+    summary = "\n".join(lines)
+    # print(): Forge console always shows stdout; logging alone may be filtered.
+    print(summary, flush=True)
+    for line in lines:
+        logging.info(line)
+    return {"found": total, "loaded": loaded, "skipped": skipped, "failed": failed}
+
+
+try:
+    PROCESSOR_LOAD_REPORT = _load_processors()
+except Exception as e:  # pkgutil itself broken — still exactly one TAG'd block
+    PROCESSOR_LOAD_REPORT = {"found": 0, "loaded": [], "skipped": [], "failed": []}
+    logging.error("%s processor discovery crashed: %s", TAG, _exc_reason(e))
+    print(f"{TAG} Processors: discovery crashed — {_exc_reason(e)}", flush=True)
 
 
 if _FORGE_AVAILABLE:
@@ -180,11 +272,10 @@ def make_guidance_axis_on_xyz_grid():
 def on_guidance_pack_before_ui():
     try:
         make_guidance_axis_on_xyz_grid()
-    except Exception:
-        print(
-            f"[-] Guidance Pack Script: Error setting up XYZ Grid options:\n{traceback.format_exc()}",
-            file=sys.stderr,
-        )
+    except Exception as e:
+        # Same TAG prefix as the load summary; full traceback at debug only.
+        logging.error("%s XYZ Grid setup failed: %s", TAG, _exc_reason(e))
+        logging.debug("%s XYZ traceback:\n%s", TAG, traceback.format_exc())
 
 
 if _FORGE_AVAILABLE and script_callbacks is not None:
