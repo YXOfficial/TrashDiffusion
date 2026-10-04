@@ -1,17 +1,19 @@
 # ComfyUI — placeholder
 
-Thư mục này giữ chỗ cho adapter ComfyUI (custom nodes), hiện **chưa làm gì cả**.
+This directory reserves space for the ComfyUI adapter (custom nodes).
+**Nothing implemented here yet.**
 
-Toàn bộ logic guidance thuần torch nằm ở `../core/` (backend-agnostic), nên khi
-làm ComfyUI chỉ cần viết node wrapper mỏng import từ `core.nodes` — không copy
-logic, không dính import Forge.
+All guidance logic is pure torch in `../core/` (backend-agnostic), so building
+the ComfyUI side only needs thin node wrappers importing from `core.nodes` —
+no logic copied, no Forge imports.
 
-Dự kiến:
+Planned:
 
 ```text
 ComfyUI/
     __init__.py          # NODE_CLASS_MAPPINGS / NODE_DISPLAY_NAME_MAPPINGS
-    nodes_*.py           # wrapper mỏng quanh core.nodes.*
+    nodes_*.py           # thin wrappers around core.nodes.*
 ```
 
-Cài đặt sau này: symlink thư mục này vào `ComfyUI/custom_nodes/CrazyDiffusion-ComfyUI`.
+Future install: symlink this directory into
+`ComfyUI/custom_nodes/CrazyDiffusion-ComfyUI`.

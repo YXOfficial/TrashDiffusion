@@ -3,13 +3,13 @@ import numpy as np
 import torch
 from tqdm.auto import trange
 
-# Import hàm bước giải bậc hai của thuật toán RES từ thư viện k-diffusion gốc
+# Second-order RES solver step from the original k-diffusion library
 try:
     from k_diffusion.sampling import _refined_exp_sosu_step
 except ImportError:
     raise ImportError(
-        "Không tìm thấy hàm '_refined_exp_sosu_step' trong k_diffusion.sampling. "
-        "Hãy đảm bảo Forge / WebUI của bạn đã được cập nhật hoặc thư viện k-diffusion có hỗ trợ RES."
+        "Could not find '_refined_exp_sosu_step' in k_diffusion.sampling. "
+        "Make sure your Forge / WebUI is updated or the k-diffusion build supports RES."
     )
 
 from modules import sd_samplers, sd_samplers_common, shared
@@ -35,7 +35,7 @@ def dct_type_2_matrix(num_n, num_k, norm="ortho", device=None, dtype=torch.float
     return torch.from_numpy(dct_matrix).to(device=device, dtype=dtype)
 
 
-# ── 2. ConvDCT (Độc lập thiết bị & kiến trúc) ─────────────────────────────────
+# ── 2. ConvDCT (device & architecture independent) ─────────────────────────────
 
 class ConvDCT:
     def __init__(self, block_size=8):
@@ -118,7 +118,7 @@ class ConvDCT:
         return inverted.to(orig_dtype)
 
 
-# ── 3. Bộ lọc hiệp biến cấu trúc thích ứng ───────────────────────────────────────
+# ── 3. Adaptive structure-aware covariance filter ──────────────────────────────
 
 class CovarianceNoiseFilter:
     def __init__(self, block_size=8, var_cap=1e4):
@@ -147,7 +147,7 @@ class CovarianceNoiseFilter:
         return out.to(dx_dnoise.dtype)
 
 
-# ── 4. Thuật toán RES Solver được nâng cấp (BẢN PURE ODE) ───────────────────────
+# ── 4. Upgraded RES solver (PURE ODE build) ────────────────────────────────────
 @torch.no_grad()
 def sample_refined_exp_s(
         model,
@@ -165,7 +165,7 @@ def sample_refined_exp_s(
 ):
     extra_args = {} if extra_args is None else extra_args
 
-    # 1. Truy tìm CNS handler từ Forge
+    # 1. Look up the CNS handler from Forge
     cns_handler = None
     try:
         cns_handler = shared.sd_model.forge_objects.unet.model_options.get("transformer_options", {}).get("cns_handler",
@@ -173,7 +173,7 @@ def sample_refined_exp_s(
     except Exception:
         pass
 
-    # [KHÓA CHẶT ODE]: Vứt bỏ hoàn toàn s_churn trong vòng lặp. s_churn và ita cưỡng bức bằng 0.0
+    # [ODE LOCK]: drop s_churn entirely in the loop. s_churn and ita forced to 0.0
     ita = torch.zeros((1,), device=x.device)
 
     device = x.device
@@ -184,26 +184,26 @@ def sample_refined_exp_s(
     s_in = x.new_ones([x.shape[0]])
 
     # ── [THE PURE CNS-INIT RES-ODE] ──
-    # Áp dụng đổi màu CNS lên chính hạt nhiễu khởi đầu x tại Step 0
+    # Apply CNS coloring to the starting noise x at step 0
     if cns_handler is not None:
         x = cns_handler.apply(x, 0, sigmas)
-        print("\n[CNS-Sampler] >>> PURE ODE ACTIVE: Đã nhào nặn màu sắc CNS thành công vào Latent khởi đầu (Step 0).")
+        print("\n[CNS-Sampler] >>> PURE ODE ACTIVE: CNS color baked into starting latent (step 0).")
     else:
-        print("\n[CNS-Sampler] >>> PURE ODE ACTIVE: Không tìm thấy CNS, chạy RES ODE nguyên bản.")
+        print("\n[CNS-Sampler] >>> PURE ODE ACTIVE: no CNS found, running vanilla RES ODE.")
 
     for i in trange(len(sigmas) - (1 if denoise_to_zero else 2), disable=disable):
         sigma = sigmas[i]
         sigma_next = sigmas[i + 1]
         time = sigma / sigma_max
 
-        # Giai đoạn sau hoàn toàn không có nhiễu, x_hat chính là x
+        # Late stage is fully noise-free, x_hat is just x
         x_hat = x
 
-        # Bước giải bậc hai RES thuần khiết không bị gián đoạn động lượng
+        # Pure second-order RES step with uninterrupted momentum
         x_next, denoised, denoised2, vel, vel_2 = _refined_exp_sosu_step(
             model,
             x_hat,
-            sigma,  # sigma_hat bằng đúng sigma vì ita = 0
+            sigma,  # sigma_hat equals sigma because ita = 0
             sigma_next,
             c2=c2,
             extra_args=extra_args,
@@ -251,7 +251,7 @@ def sample_refined_exp_s(
 def sample_res_solver(model, x, sigmas, extra_args=None, callback=None, disable=None,
                       noise_sampler_type="gaussian", noise_sampler=None, denoise_to_zero=True,
                       simple_phi_calc=False, c2=0.5, ita=None, momentum=0.0):
-    # Khóa chặt ita bằng 0.0 để vô hiệu hóa hoàn toàn s_churn
+    # Pin ita to 0.0 to fully disable s_churn
     ita = torch.tensor([0.0])
 
     return sample_refined_exp_s(
@@ -268,7 +268,7 @@ def sample_res_solver(model, x, sigmas, extra_args=None, callback=None, disable=
     )
 
 
-# ── 6. Đăng ký hệ thống WebUI / Forge ──────────────────────────────────────────
+# ── 6. WebUI / Forge registration ─────────────────────────────────────────────
 
 def add_custom_samplers():
     new_samplers_config = [

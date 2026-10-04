@@ -20,10 +20,10 @@ def parse_unet_blocks(model, unet_block_list: str, attn: Literal["attn1", "attn2
             elif unet_part.startswith("output"):
                 output.append((block_id, name, "output"))
 
-    # Logic đơn giản hóa để parse chuỗi d0,m0,u0...
+    # Simplified parsing for d0,m0,u0 style block strings...
     final_blocks = []
     user_inputs = [b.strip() for b in unet_block_list.split(",")]
-    # Để đảm bảo chạy ổn định, ta sẽ map các block theo ID
+    # Map blocks by ID to keep behavior stable
     for user_input in user_inputs:
         if not user_input: continue
         prefix, idx = user_input[0], user_input[1:]

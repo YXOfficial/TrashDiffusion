@@ -1,16 +1,16 @@
 # CrazyDiffusion
 
-Personal guidance/sampling experiments, structured so upstream restructures don't
-nuke everything. Single source of truth + thin adapters ("cứng như Linux").
+Personal guidance/sampling experiments, structured so upstream restructures
+don't nuke everything. Single source of truth + thin adapters.
 
 ```text
 CrazyDiffusion/
     core/                      # PURE torch. No Forge/Comfy/Gradio imports.
-        guidance.py            # GuidanceState/Pipeline + FDG/ZeResFDG/CFG-Zero/...
+        guidance.py            # GuidanceState/Pipeline + FDG/CFG-Zero/CFG-Ctrl...
         asag.py                # ASAG attention helpers
         forge_compat.py        # ONLY place that knows Forge layouts (fallbacks)
         _bootstrap.py          # locate repo root -> sys.path (no ../../../ hacks)
-        nodes/                 # backend-agnostic node definitions (FDG, ZeResFDG, ...)
+        nodes/                 # backend-agnostic node definitions (FDG, ...)
     sd-webui-forge-classic/    # Forge extension root (symlink/copy into extensions/)
         scripts/
             guidance_pack_script.py   # single AlwaysVisible entry
@@ -27,22 +27,26 @@ CrazyDiffusion/
 python tools/install_forge.py --forge-root <path-to-sd-webui-forge-classic>
 ```
 
-Chi tiết: `sd-webui-forge-classic/README.md`.
+Details: `sd-webui-forge-classic/README.md`.
 
 ## ComfyUI
 
-Chưa làm — `ComfyUI/` để trống giữ chỗ. Khi làm, wrapper mỏng quanh `core.nodes`.
+Not done — `ComfyUI/` is an empty placeholder. When built, thin wrappers around
+`core.nodes`.
 
-## Quy tắc cứng
+## Hard rules
 
-1. `core/` không import `modules`, `backend`, `comfy`, `gradio`, `ldm_patched`
-   ở top-level. Forge access chỉ qua `core.forge_compat` (lazy + fallback).
-2. Không `sys.path.append("../../../")` — dùng `core._bootstrap.ensure_repo_on_path`.
-3. Không `p.sd_model.forge_objects.unet` trực tiếp trong processor — dùng
+1. `core/` must not import `modules`, `backend`, `comfy`, `gradio`,
+   `ldm_patched` at top level. Forge access only via `core.forge_compat`
+   (lazy + fallback).
+2. No `sys.path.append("../../../")` — use
+   `core._bootstrap.ensure_repo_on_path`.
+3. No direct `p.sd_model.forge_objects.unet` in processors — use
    `get_unet(p)` / `set_unet(p, unet)`.
-4. Một processor hỏng không được giết cả pack (per-module try/except khi load).
+4. One broken processor must not kill the whole pack (per-module try/except
+   at load time).
 
 ## Guidance / Sampling status
 
-- [x] ZeResFDG, CFG-Zero, FDG, ASAG (+ init noise)
-- [ ] QSilk (issue: unknown), samplers (RES/CNS thử nghiệm trong `_legacy`)
+- [x] FDG, CFG-Zero, CFG-Ctrl, ASAG (+ init noise)
+- [ ] Experimental: Anima Overdrive, VNA variants, Human Denoiser

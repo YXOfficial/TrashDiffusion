@@ -8,15 +8,9 @@ Thin wrappers around :mod:`core.guidance`. No Forge/Comfy imports here;
 from .asag_node import ASAGGuidance
 from .cfg_zero import CFGZeroNode
 from .fdg import FDGNode
-from .s2 import S2GuidanceNode
-from .tpso import TPSONode
-from .zeresfdg import ZeResFDGNode
 
 __all__ = [
     "ASAGGuidance",
     "CFGZeroNode",
     "FDGNode",
-    "S2GuidanceNode",
-    "TPSONode",
-    "ZeResFDGNode",
 ]

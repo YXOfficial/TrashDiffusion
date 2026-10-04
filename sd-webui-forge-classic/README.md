@@ -1,15 +1,16 @@
 # CrazyDiffusion — Forge Classic extension
 
-Thin Forge adapter. Mọi logic guidance nằm ở `../core/` (torch thuần, không import
-Forge/Comfy/Gradio). Adapter này chỉ làm UI + patch UNet qua `core.forge_compat`
-(multi-layout fallback), nên upstream
+Thin Forge adapter. All guidance logic lives in `../core/` (pure torch, no
+Forge/Comfy/Gradio imports). This adapter only does UI + UNet patching via
+`core.forge_compat` (multi-layout fallback), so when upstream
 [sd-webui-forge-classic](https://github.com/Haoming02/sd-webui-forge-classic)
-restructure `modules/` / `backend/` vẫn chỉ degrade thành warning thay vì crash import.
+restructures `modules/` / `backend/`, things degrade to warnings instead of
+import-time crashes.
 
-## Cài đặt (không clone cả repo vào extensions)
+## Install (don't clone the whole repo into extensions)
 
 ```bash
-# Cách 1: symlink (khuyên dùng, nhận update khi git pull repo này)
+# Option 1: symlink (recommended, picks up updates on git pull)
 ln -s /path/to/CrazyDiffusion/sd-webui-forge-classic \
       /path/to/sd-webui-forge-classic/extensions/CrazyDiffusion
 
@@ -18,28 +19,28 @@ New-Item -ItemType SymbolicLink `
   -Path "<forge>\extensions\CrazyDiffusion" `
   -Target "<repo>\sd-webui-forge-classic>"
 
-# Cách 2: copy
+# Option 2: copy
 cp -r sd-webui-forge-classic <forge>/extensions/CrazyDiffusion
 ```
 
-Hoặc chạy: `python tools/install_forge.py --forge-root <path-to-forge> [--copy]`
-(mặc định symlink).
+Or run: `python tools/install_forge.py --forge-root <path-to-forge> [--copy]`
+(default: symlink).
 
-## Yêu cầu
+## Requirements
 
-Xem `requirements.txt` (hiện tại: `kornia`).
+See `requirements.txt` (currently: `kornia`).
 
 ## Layout
 
 ```text
 sd-webui-forge-classic/
-    README.md            # file này
+    README.md            # this file
     requirements.txt
     scripts/
-        guidance_pack_script.py   # entry point duy nhất (AlwaysVisible Script)
+        guidance_pack_script.py   # single entry point (AlwaysVisible Script)
         guidance_pack/
-            __init__.py           # bootstrap core/ lên sys.path
+            __init__.py           # bootstraps core/ onto sys.path
             base.py registry.py
-            processors/           # mỗi guidance một file
-        _legacy/                  # sampler thử nghiệm, Forge không autoload
+            processors/           # one file per guidance method
+        _legacy/                  # experimental samplers, NOT autoloaded by Forge
 ```

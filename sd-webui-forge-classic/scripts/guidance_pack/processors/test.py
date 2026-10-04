@@ -19,7 +19,7 @@ def make_attn2_probe_modifier(k_scale, v_scale, final_blocks, sigma_start_val, s
         sigma = args["sigma"]
         x = args["input"]
 
-        # Nếu không thay đổi gì thì trả về nguyên bản
+        # No-op probe returns the input unchanged
         if (k_scale == 1.0 and v_scale == 1.0) or not (sigma_end < sigma[0] <= sigma_start_val):
             return state
 
@@ -29,13 +29,13 @@ def make_attn2_probe_modifier(k_scale, v_scale, final_blocks, sigma_start_val, s
         else:
             model_options["transformer_options"] = model_options["transformer_options"].copy()
 
-        # Truyền giá trị thăm dò vào kwargs của transformer
+        # Pass probe values through transformer kwargs
         model_options["transformer_options"]["probe_k_scale"] = k_scale
         model_options["transformer_options"]["probe_v_scale"] = v_scale
 
         for block_idx in final_blocks:
             from core.asag import set_model_options_patch_replace
-            # CHỈ ĐƯỢC TARGET VÀO attn2
+            # ONLY target attn2
             model_options = set_model_options_patch_replace(model_options, probe_marker, "attn2", "blocks", block_idx)
 
         try:
@@ -43,10 +43,10 @@ def make_attn2_probe_modifier(k_scale, v_scale, final_blocks, sigma_start_val, s
         except ImportError:
             from ldm_patched.modules.samplers import calc_cond_uncond_batch as forge_calc
 
-        # Chạy pass thứ 2 với attn2 đã bị modify
+        # Second pass with modified attn2
         (probe_cond_pred, _) = forge_calc(model_patcher, cond, None, x, sigma, model_options)
 
-        # Tính toán delta (sự chênh lệch do probe gây ra) và cộng thẳng vào prediction
+        # Delta from the probe, added straight into the prediction
         probe_guidance = (probe_cond_pred - cond_pred)
         probe_guidance = torch.nan_to_num(probe_guidance, nan=0.0)
 
@@ -62,10 +62,10 @@ class AnimaAttn2ProbeProcessor(GuidanceProcessor):
     def create_ui(self):
         with gr.Tab(label="Attn2 Probe"):
             gr.Markdown(
-                "### Anima Attn2 Probe\nCông cụ thăm dò ma trận Text -> Image. Không dùng VNA math, chỉ test cường độ (K/V).")
+                "### Anima Attn2 Probe\nText -> Image matrix probe. No VNA math, only K/V intensity.")
             enabled = gr.Checkbox(label="Enable Attn2 Probe", value=False)
 
-            # Khởi điểm an toàn là 1.0 (không thay đổi gì)
+            # Safe default is 1.0 (no change)
             k_scale = gr.Slider(label="K Scale (Focus / Temp)", minimum=0.0, maximum=5.0, step=0.05, value=1.0)
             v_scale = gr.Slider(label="V Scale (Volume / Intensity)", minimum=0.0, maximum=5.0, step=0.05, value=1.0)
 
@@ -124,7 +124,7 @@ class AnimaAttn2ProbeProcessor(GuidanceProcessor):
 
     def ensure_anima_patched_for_probe(self, model):
         for name, module in model.named_modules():
-            # TỐI QUAN TRỌNG: Chỉ patch module Cross-Attention (nơi is_SelfAttn = False)
+            # CRITICAL: only patch Cross-Attention modules (where is_SelfAttn = False)
             if module.__class__.__name__ == 'SelfCrossAttention' and getattr(module, 'is_SelfAttn', False) == False:
                 if not hasattr(module, '_attn2_probe_patched'):
                     parts = name.split('.')
@@ -140,18 +140,18 @@ class AnimaAttn2ProbeProcessor(GuidanceProcessor):
                             def patched_compute_attention(this, q, k, v, transformer_options={}):
                                 patches_cfg = transformer_options.get("patches_replace", {}).get("attn2", {})
                                 if ("blocks", idx) in patches_cfg:
-                                    # Lấy tham số thăm dò từ kwargs, nếu không có thì mặc định là 1.0
+                                    # Read probe params from kwargs, default 1.0
                                     k_scale_val = transformer_options.get("probe_k_scale", 1.0)
                                     v_scale_val = transformer_options.get("probe_v_scale", 1.0)
 
-                                    # ĐƠN GIẢN HÓA: Chỉ nhân vô hướng. Không Norm, không số mũ.
-                                    # K quyết định Text có nhắm chuẩn mục tiêu pixel hay không (Focus)
+                                    # SIMPLIFIED: scalar multiply only. No norm, no exponents.
+                                    # K controls whether text aims at the right pixels (Focus)
                                     k_probed = k * k_scale_val
 
-                                    # V quyết định pixel sẽ bị nhồi bao nhiêu lượng tín hiệu Text (Intensity)
+                                    # V controls how much text signal each pixel receives (Intensity)
                                     v_probed = v * v_scale_val
 
-                                    # Giữ nguyên luồng tensor, đẩy vào hàm attention gốc của Comfy
+                                    # Keep the tensor flow intact, forward into Comfy's original attention
                                     return original_func(q, k_probed, v_probed, transformer_options=transformer_options)
 
                                 return original_func(q, k, v, transformer_options=transformer_options)
