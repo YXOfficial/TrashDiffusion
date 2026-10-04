@@ -98,6 +98,24 @@ def _exc_reason(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {msg}{origin}"
 
 
+def _refresh_extension_modules() -> None:
+    """Drop our cached modules so Forge's Reload UI picks up `git pull` edits.
+
+    Forge re-execs this entry file on reload, but `guidance_pack.*` would
+    otherwise be served stale from sys.modules: processor code changes would
+    not apply, and the load report would false-alarm every module as
+    "imported OK but registered no processor". `core.*` is refreshed too,
+    but only inside real Forge (harness/tests keep their stubs).
+    """
+    for name in [m for m in list(sys.modules)
+                 if m == "guidance_pack" or m.startswith("guidance_pack.")]:
+        del sys.modules[name]
+    if _FORGE_AVAILABLE:
+        for name in [m for m in list(sys.modules)
+                     if m == "core" or m.startswith("core.")]:
+            del sys.modules[name]
+
+
 def _load_processors() -> dict:
     """Import every guidance_pack.processors.* module, report ONE summary.
 
@@ -105,8 +123,23 @@ def _load_processors() -> dict:
     loaded = [(module, [processor names])], skipped = [(module, reason)],
     failed = [(module, reason, hint)].
     """
+    global get_processors, clear_generation_params_once, reset_unet_if_needed
     import pkgutil
     import importlib
+
+    _refresh_extension_modules()
+    try:
+        import guidance_pack.registry as _reg
+        get_processors = _reg.get_processors
+    except Exception as e:
+        logging.error("%s registry re-import failed: %s", TAG, _exc_reason(e))
+    if _FORGE_AVAILABLE:
+        try:
+            import core.forge_compat as _fc
+            clear_generation_params_once = _fc.clear_generation_params_once
+            reset_unet_if_needed = _fc.reset_unet_if_needed
+        except Exception as e:
+            logging.error("%s forge_compat re-import failed: %s", TAG, _exc_reason(e))
 
     import guidance_pack.processors as _pkg
 
