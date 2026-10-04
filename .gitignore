@@ -1,3 +1,10 @@
-.idea
-Test-reForge
-ComfyUI
+# Local / generated — never commit
+.idea/
+venv/
+tmp/
+__pycache__/
+*.pyc
+*.pyo
+*.pt.cache
+.antigravitycli/
+opencode.json
