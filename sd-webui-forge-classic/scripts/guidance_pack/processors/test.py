@@ -103,11 +103,11 @@ class AnimaAttn2ProbeProcessor(GuidanceProcessor):
         if "sigma_end" in probe_xyz:
             sigma_end = float(probe_xyz["sigma_end"])
 
-        self.record_params(p, {"Attn2 Probe Enabled": bool(enabled)})
         if not enabled:
             return
 
         self.record_params(p, {
+            "Attn2 Probe Enabled": True,
             "Attn2 Probe K": float(k_scale),
             "Attn2 Probe V": float(v_scale),
             "Attn2 Probe blocks": str(blocks_list),

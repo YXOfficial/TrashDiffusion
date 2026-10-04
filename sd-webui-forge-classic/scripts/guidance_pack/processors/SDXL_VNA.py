@@ -129,10 +129,10 @@ class SDXLVNAProcessor(GuidanceProcessor):
         if "rescale" in sdxl_vna_xyz:
             rescale = float(sdxl_vna_xyz["rescale"])
 
-        self.record_params(p, {"SDXL VNA Enabled": bool(enabled)})
         if not enabled: return
 
         self.record_params(p, {
+            "SDXL VNA Enabled": True,
             "SDXL VNA scale": float(scale),
             "SDXL VNA blocks": str(blocks_list),
             "SDXL VNA sigma start": float(sigma_start),

@@ -49,7 +49,6 @@ class FDGProcessor(GuidanceProcessor):
         if "fdg_levels" in fdg_xyz:
             self.fdg_levels = int(fdg_xyz["fdg_levels"])
 
-        self.record_params(p, {"FDG Enabled": bool(self.fdg_enabled)})
         if self.fdg_enabled:
             patched_unet = self.node.patch(
                 get_unet(p),
@@ -60,6 +59,7 @@ class FDGProcessor(GuidanceProcessor):
             )[0]
             set_unet(p, patched_unet)
             self.record_params(p, {
+                "FDG Enabled": True,
                 "FDG w_low": self.fdg_w_low,
                 "FDG w_high": self.fdg_w_high,
                 "FDG Levels": int(self.fdg_levels),

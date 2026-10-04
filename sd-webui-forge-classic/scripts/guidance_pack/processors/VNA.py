@@ -111,11 +111,11 @@ class AnimaVNAProcessor(GuidanceProcessor):
         if "rescale" in vna_xyz:
             rescale = float(vna_xyz["rescale"])
 
-        self.record_params(p, {"Anima VNA Enabled": bool(enabled)})
         if not enabled:
             return
 
         self.record_params(p, {
+            "Anima VNA Enabled": True,
             "Anima VNA scale": float(scale),
             "Anima VNA blocks": str(blocks_list),
             "Anima VNA sigma start": float(sigma_start),

@@ -78,7 +78,6 @@ class InitNoiseProcessor(GuidanceProcessor):
 
     def process(self, p, *args):
         self.enabled = args[0]
-        self.record_params(p, {"Init Noise Enabled": bool(self.enabled)})
         if not self.enabled:
             return
 
@@ -91,7 +90,11 @@ class InitNoiseProcessor(GuidanceProcessor):
         if "param" in xyz:
             self.param = float(xyz["param"])
 
-        self.record_params(p, {"Init Noise": self.mode, "Init Noise sigma": float(self.param)})
+        self.record_params(p, {
+            "Init Noise Enabled": True,
+            "Init Noise": self.mode,
+            "Init Noise sigma": float(self.param),
+        })
 
         rng = getattr(p, "rng", None)
         if rng is None:

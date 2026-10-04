@@ -263,7 +263,7 @@ class AnimaOverdriveProcessor(GuidanceProcessor):
 
     def create_ui(self):
         with gr.Tab(label="Anima Overdrive"):
-            gr.Markdown("### Anima Overdrive\nEp xung cross-attn trong 1 pass duy nhat. Khac CFG: khong uncond, khong forward thu 2.")
+            gr.Markdown("### Anima Overdrive\nBoosts cross-attn in a single pass. Unlike CFG: no uncond, no second forward.")
             enabled = gr.Checkbox(label="Enable Anima Overdrive", value=False)
             boost = gr.Slider(label="Cross Boost (post, mild)", minimum=1.0, maximum=10.0, step=0.05, value=1.1)
             temp = gr.Slider(label="Logit Temp (pre-softmax, survives LayerNorm)", minimum=1.0, maximum=10.0, step=0.01, value=1.15)
@@ -285,7 +285,6 @@ class AnimaOverdriveProcessor(GuidanceProcessor):
     def process(self, p, enabled, boost, temp, blocks_list, qwen_fix, qwen_scale):
         _ensure_qwen_patched()
         qwen_fix_eff = bool(enabled and qwen_fix)
-        self.record_params(p, {"Anima Overdrive Enabled": bool(enabled)})
         _STATE["qwen_fix"] = qwen_fix_eff
         _STATE["qwen_scale"] = float(qwen_scale)
         if not enabled:
@@ -294,6 +293,7 @@ class AnimaOverdriveProcessor(GuidanceProcessor):
             return
 
         self.record_params(p, {
+            "Anima Overdrive Enabled": True,
             "Anima Overdrive boost": float(boost),
             "Anima Overdrive temp": float(temp),
             "Anima Overdrive blocks": str(blocks_list),

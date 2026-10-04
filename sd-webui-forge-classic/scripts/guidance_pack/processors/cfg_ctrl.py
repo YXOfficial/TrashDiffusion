@@ -49,8 +49,6 @@ class CFGCtrlProcessor(GuidanceProcessor):
         if "no_cfg_warmup_steps" in cfg_ctrl_xyz:
             self.no_cfg_warmup_steps = int(cfg_ctrl_xyz["no_cfg_warmup_steps"])
 
-        self.record_params(p, {"CFG-Ctrl SMC Enable": bool(self.smc_cfg_enable)})
-
         # Apply
         if self.smc_cfg_enable:
             pipeline = ensure_guidance_pipeline(get_unet(p))
@@ -66,6 +64,7 @@ class CFGCtrlProcessor(GuidanceProcessor):
                 )
             )
             self.record_params(p, {
+                "CFG-Ctrl SMC Enable": True,
                 "CFG-Ctrl Lambda": self.smc_cfg_lambda,
                 "CFG-Ctrl K": self.smc_cfg_K,
                 "CFG-Ctrl Warmup Steps": int(self.no_cfg_warmup_steps),
