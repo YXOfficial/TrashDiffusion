@@ -23,7 +23,7 @@ New-Item -ItemType SymbolicLink `
 cp -r sd-webui-forge-classic <forge>/extensions/TrashDiffusion
 ```
 
-Or run: `python tools/install_forge.py --forge-root <path-to-forge> [--copy]`
+Or run: `python tools/install.py --forge-root <path-to-forge>` (also applies `--share cloudflare` + cloudflared).
 (default: symlink).
 
 ## Requirements

@@ -17,14 +17,14 @@ TrashDiffusion/
             guidance_pack/             # UI + processors (thin, call core.*)
             _legacy/                  # quarantined experiments, not autoloaded
     ComfyUI/                   # placeholder, intentionally empty for now
-    tools/install_forge.py     # symlink/copy installer
+    tools/install.py           # one-shot installer (adapter + --share cloudflare + cloudflared)
     docs/                      # notes
 ```
 
 ## Install (Forge)
 
 ```bash
-python tools/install_forge.py --forge-root <path-to-sd-webui-forge-classic>
+python tools/install.py --forge-root <path-to-sd-webui-forge-classic>
 ```
 
 Details: `sd-webui-forge-classic/README.md`.
