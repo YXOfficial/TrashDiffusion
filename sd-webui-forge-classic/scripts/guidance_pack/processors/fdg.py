@@ -32,6 +32,9 @@ class FDGProcessor(GuidanceProcessor):
             )
         return [fdg_enabled, fdg_w_low, fdg_w_high, fdg_levels]
 
+    def infotext_fields(self):
+        return ["FDG Enabled", "FDG w_low", "FDG w_high", "FDG Levels"]
+
     def process(self, p, *args):
         self.fdg_enabled, self.fdg_w_low, self.fdg_w_high, self.fdg_levels = args
 
@@ -46,6 +49,7 @@ class FDGProcessor(GuidanceProcessor):
         if "fdg_levels" in fdg_xyz:
             self.fdg_levels = int(fdg_xyz["fdg_levels"])
 
+        self.record_params(p, {"FDG Enabled": bool(self.fdg_enabled)})
         if self.fdg_enabled:
             patched_unet = self.node.patch(
                 get_unet(p),
@@ -55,10 +59,11 @@ class FDGProcessor(GuidanceProcessor):
                 fdg_levels=int(self.fdg_levels),
             )[0]
             set_unet(p, patched_unet)
-            p.extra_generation_params["FDG Enabled"] = self.fdg_enabled
-            p.extra_generation_params["FDG w_low"] = self.fdg_w_low
-            p.extra_generation_params["FDG w_high"] = self.fdg_w_high
-            p.extra_generation_params["FDG Levels"] = int(self.fdg_levels)
+            self.record_params(p, {
+                "FDG w_low": self.fdg_w_low,
+                "FDG w_high": self.fdg_w_high,
+                "FDG Levels": int(self.fdg_levels),
+            })
             logging.debug(
                 "FDG: Patch applied. Enabled=%s, w_low=%s, w_high=%s, levels=%s",
                 self.fdg_enabled, self.fdg_w_low, self.fdg_w_high, self.fdg_levels

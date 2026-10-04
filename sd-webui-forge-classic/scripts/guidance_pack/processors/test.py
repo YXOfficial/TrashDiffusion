@@ -77,6 +77,16 @@ class AnimaAttn2ProbeProcessor(GuidanceProcessor):
 
         return [enabled, k_scale, v_scale, blocks_list, sigma_start, sigma_end]
 
+    def infotext_fields(self):
+        return [
+            "Attn2 Probe Enabled",
+            "Attn2 Probe K",
+            "Attn2 Probe V",
+            "Attn2 Probe blocks",
+            "Attn2 Probe sigma start",
+            "Attn2 Probe sigma end",
+        ]
+
     def process(self, p, enabled, k_scale, v_scale, blocks_list, sigma_start, sigma_end):
         xyz_settings = getattr(p, "_guidance_xyz", {})
         probe_xyz = xyz_settings.get("attn2_probe", {})
@@ -93,8 +103,17 @@ class AnimaAttn2ProbeProcessor(GuidanceProcessor):
         if "sigma_end" in probe_xyz:
             sigma_end = float(probe_xyz["sigma_end"])
 
+        self.record_params(p, {"Attn2 Probe Enabled": bool(enabled)})
         if not enabled:
             return
+
+        self.record_params(p, {
+            "Attn2 Probe K": float(k_scale),
+            "Attn2 Probe V": float(v_scale),
+            "Attn2 Probe blocks": str(blocks_list),
+            "Attn2 Probe sigma start": float(sigma_start),
+            "Attn2 Probe sigma end": float(sigma_end),
+        })
 
         unet_patcher = get_unet(p)
         model = unet_patcher.model.diffusion_model

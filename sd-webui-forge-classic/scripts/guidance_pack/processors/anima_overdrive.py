@@ -272,14 +272,34 @@ class AnimaOverdriveProcessor(GuidanceProcessor):
             qwen_scale = gr.Slider(label="Emphasis Strength", minimum=0.0, maximum=2.0, step=0.05, value=1.0)
         return [enabled, boost, temp, blocks_list, qwen_fix, qwen_scale]
 
+    def infotext_fields(self):
+        return [
+            "Anima Overdrive Enabled",
+            "Anima Overdrive boost",
+            "Anima Overdrive temp",
+            "Anima Overdrive blocks",
+            "Anima Overdrive Qwen fix",
+            "Anima Overdrive Qwen scale",
+        ]
+
     def process(self, p, enabled, boost, temp, blocks_list, qwen_fix, qwen_scale):
         _ensure_qwen_patched()
-        _STATE["qwen_fix"] = bool(enabled and qwen_fix)
+        qwen_fix_eff = bool(enabled and qwen_fix)
+        self.record_params(p, {"Anima Overdrive Enabled": bool(enabled)})
+        _STATE["qwen_fix"] = qwen_fix_eff
         _STATE["qwen_scale"] = float(qwen_scale)
         if not enabled:
             _STATE["gain"] = 1.0
             _STATE["temp"] = 1.0
             return
+
+        self.record_params(p, {
+            "Anima Overdrive boost": float(boost),
+            "Anima Overdrive temp": float(temp),
+            "Anima Overdrive blocks": str(blocks_list),
+            "Anima Overdrive Qwen fix": qwen_fix_eff,
+            "Anima Overdrive Qwen scale": float(qwen_scale),
+        })
 
         unet_patcher = get_unet(p)
         model = unet_patcher.model.diffusion_model

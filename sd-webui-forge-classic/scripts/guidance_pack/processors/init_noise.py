@@ -73,8 +73,12 @@ class InitNoiseProcessor(GuidanceProcessor):
             )
         return [enabled, mode, param]
 
+    def infotext_fields(self):
+        return ["Init Noise Enabled", "Init Noise", "Init Noise sigma"]
+
     def process(self, p, *args):
         self.enabled = args[0]
+        self.record_params(p, {"Init Noise Enabled": bool(self.enabled)})
         if not self.enabled:
             return
 
@@ -87,9 +91,7 @@ class InitNoiseProcessor(GuidanceProcessor):
         if "param" in xyz:
             self.param = float(xyz["param"])
 
-        extra = getattr(p, "extra_generation_params", None)
-        if extra is not None:
-            extra["Init Noise"] = self.mode
+        self.record_params(p, {"Init Noise": self.mode, "Init Noise sigma": float(self.param)})
 
         rng = getattr(p, "rng", None)
         if rng is None:

@@ -85,6 +85,16 @@ class AnimaVNAProcessor(GuidanceProcessor):
 
         return [enabled, scale, blocks_list, sigma_start, sigma_end, rescale]
 
+    def infotext_fields(self):
+        return [
+            "Anima VNA Enabled",
+            "Anima VNA scale",
+            "Anima VNA blocks",
+            "Anima VNA sigma start",
+            "Anima VNA sigma end",
+            "Anima VNA rescale",
+        ]
+
     def process(self, p, enabled, scale, blocks_list, sigma_start, sigma_end, rescale):
         xyz_settings = getattr(p, "_guidance_xyz", {})
         vna_xyz = xyz_settings.get("vna", {})
@@ -101,8 +111,17 @@ class AnimaVNAProcessor(GuidanceProcessor):
         if "rescale" in vna_xyz:
             rescale = float(vna_xyz["rescale"])
 
+        self.record_params(p, {"Anima VNA Enabled": bool(enabled)})
         if not enabled:
             return
+
+        self.record_params(p, {
+            "Anima VNA scale": float(scale),
+            "Anima VNA blocks": str(blocks_list),
+            "Anima VNA sigma start": float(sigma_start),
+            "Anima VNA sigma end": float(sigma_end),
+            "Anima VNA rescale": float(rescale),
+        })
 
         unet_patcher = get_unet(p)
         model = unet_patcher.model.diffusion_model

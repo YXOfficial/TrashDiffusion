@@ -196,6 +196,11 @@ if _FORGE_AVAILABLE:
 
         def ui(self, *args, **kwargs):
             self.arg_counts = []
+            # Fresh per ui() call (txt2img + img2img each call once): the
+            # runner aggregates these into paste fields so PNG Info "Send to"
+            # restores our components. Keys align with create_ui() order.
+            self.infotext_fields = []
+            self.paste_field_names = []
             ui_components = []
             with gr.Accordion(open=False, label=self.title()):
                 gr.Markdown("Unified UI for Guidance Methods.")
@@ -205,6 +210,13 @@ if _FORGE_AVAILABLE:
                             components = processor.create_ui()
                             ui_components.extend(components)
                             self.arg_counts.append(len(components))
+                            try:
+                                keys = list(processor.infotext_fields())
+                            except Exception:
+                                keys = []
+                            for comp, key in zip(components, keys):
+                                self.infotext_fields.append((comp, key))
+                                self.paste_field_names.append(key)
                         except Exception as e:
                             logging.error(f"Guidance Pack: Error creating UI for {processor.name()}: {e}")
                             self.arg_counts.append(0)

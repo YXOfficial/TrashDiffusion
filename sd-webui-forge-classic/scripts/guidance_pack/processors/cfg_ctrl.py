@@ -31,6 +31,9 @@ class CFGCtrlProcessor(GuidanceProcessor):
 
         return [smc_cfg_enable, smc_cfg_lambda, smc_cfg_K, no_cfg_warmup_steps]
 
+    def infotext_fields(self):
+        return ["CFG-Ctrl SMC Enable", "CFG-Ctrl Lambda", "CFG-Ctrl K", "CFG-Ctrl Warmup Steps"]
+
     def process(self, p, *args):
         self.smc_cfg_enable, self.smc_cfg_lambda, self.smc_cfg_K, self.no_cfg_warmup_steps = args
 
@@ -46,6 +49,8 @@ class CFGCtrlProcessor(GuidanceProcessor):
         if "no_cfg_warmup_steps" in cfg_ctrl_xyz:
             self.no_cfg_warmup_steps = int(cfg_ctrl_xyz["no_cfg_warmup_steps"])
 
+        self.record_params(p, {"CFG-Ctrl SMC Enable": bool(self.smc_cfg_enable)})
+
         # Apply
         if self.smc_cfg_enable:
             pipeline = ensure_guidance_pipeline(get_unet(p))
@@ -60,10 +65,11 @@ class CFGCtrlProcessor(GuidanceProcessor):
                     initial_sigma=initial_sigma,
                 )
             )
-            p.extra_generation_params["CFG-Ctrl SMC Enable"] = self.smc_cfg_enable
-            p.extra_generation_params["CFG-Ctrl Lambda"] = self.smc_cfg_lambda
-            p.extra_generation_params["CFG-Ctrl K"] = self.smc_cfg_K
-            p.extra_generation_params["CFG-Ctrl Warmup Steps"] = self.no_cfg_warmup_steps
+            self.record_params(p, {
+                "CFG-Ctrl Lambda": self.smc_cfg_lambda,
+                "CFG-Ctrl K": self.smc_cfg_K,
+                "CFG-Ctrl Warmup Steps": int(self.no_cfg_warmup_steps),
+            })
             logging.debug(f"CFG-Ctrl: Patch applied (SMC={self.smc_cfg_enable}, λ={self.smc_cfg_lambda}, K={self.smc_cfg_K})")
 
     def register_xyz(self, xyz_grid, set_guidance_value_func):

@@ -103,6 +103,16 @@ class SDXLVNAProcessor(GuidanceProcessor):
 
         return [enabled, scale, blocks_list, sigma_start, sigma_end, rescale]
 
+    def infotext_fields(self):
+        return [
+            "SDXL VNA Enabled",
+            "SDXL VNA scale",
+            "SDXL VNA blocks",
+            "SDXL VNA sigma start",
+            "SDXL VNA sigma end",
+            "SDXL VNA rescale",
+        ]
+
     def process(self, p, enabled, scale, blocks_list, sigma_start, sigma_end, rescale):
         xyz_settings = getattr(p, "_guidance_xyz", {})
         sdxl_vna_xyz = xyz_settings.get("sdxl_vna", {})
@@ -119,7 +129,16 @@ class SDXLVNAProcessor(GuidanceProcessor):
         if "rescale" in sdxl_vna_xyz:
             rescale = float(sdxl_vna_xyz["rescale"])
 
+        self.record_params(p, {"SDXL VNA Enabled": bool(enabled)})
         if not enabled: return
+
+        self.record_params(p, {
+            "SDXL VNA scale": float(scale),
+            "SDXL VNA blocks": str(blocks_list),
+            "SDXL VNA sigma start": float(sigma_start),
+            "SDXL VNA sigma end": float(sigma_end),
+            "SDXL VNA rescale": float(rescale),
+        })
 
         unet_patcher = get_unet(p)
         

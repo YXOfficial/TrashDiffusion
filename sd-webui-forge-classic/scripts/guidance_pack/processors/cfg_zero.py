@@ -24,6 +24,9 @@ class CFGZeroProcessor(GuidanceProcessor):
             )
         return [cfg_zero_enabled, zero_init_first_step]
 
+    def infotext_fields(self):
+        return ["CFG-Zero Enabled", "CFG-Zero Init First Step"]
+
     def process(self, p, *args):
         # Unpack args
         self.cfg_zero_enabled, self.zero_init_first_step = args
@@ -36,6 +39,8 @@ class CFGZeroProcessor(GuidanceProcessor):
         if "zero_init" in cfg_zero_xyz:
             self.zero_init_first_step = str(cfg_zero_xyz["zero_init"]).lower() == "true"
 
+        self.record_params(p, {"CFG-Zero Enabled": bool(self.cfg_zero_enabled)})
+
         # Apply
         if self.cfg_zero_enabled:
             patched_unet = self.node.patch(
@@ -44,8 +49,7 @@ class CFGZeroProcessor(GuidanceProcessor):
                 zero_init_first_step=self.zero_init_first_step,
             )[0]
             set_unet(p, patched_unet)
-            p.extra_generation_params["CFG-Zero Enabled"] = self.cfg_zero_enabled
-            p.extra_generation_params["CFG-Zero Init First Step"] = self.zero_init_first_step
+            self.record_params(p, {"CFG-Zero Init First Step": bool(self.zero_init_first_step)})
             logging.debug("CFG-Zero: Patch applied from Guidance Pack.")
 
     def register_xyz(self, xyz_grid, set_guidance_value_func):
