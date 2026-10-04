@@ -1,4 +1,4 @@
-"""CrazyDiffusion core: pure, backend-agnostic guidance math.
+"""TrashDiffusion core: pure, backend-agnostic guidance math.
 
 Rules for everything under ``core/``:
 * torch-only. NEVER import ``modules``, ``backend``, ``comfy``,

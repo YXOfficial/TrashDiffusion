@@ -16,4 +16,4 @@ ComfyUI/
 ```
 
 Future install: symlink this directory into
-`ComfyUI/custom_nodes/CrazyDiffusion-ComfyUI`.
+`ComfyUI/custom_nodes/TrashDiffusion-ComfyUI`.

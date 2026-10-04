@@ -17,7 +17,7 @@ at ``sys.path[0]``. Symlinks (extension installed via symlink) are resolved.
 
 Layout::
 
-    CrazyDiffusion/
+    TrashDiffusion/
         core/                    <- pure torch, zero Forge/Comfy/Gradio imports
         sd-webui-forge-classic/  <- thin Forge adapter (this extension)
         ComfyUI/                 <- placeholder for now

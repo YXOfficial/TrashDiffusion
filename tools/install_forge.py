@@ -6,7 +6,7 @@ for a snapshot install.
 Usage:
     python tools/install_forge.py --forge-root D:/apps/sd-webui-forge-classic
     python tools/install_forge.py --forge-root D:/apps/sd-webui-forge-classic --copy
-    python tools/install_forge.py --forge-root D:/apps/sd-webui-forge-classic --name CrazyDiffusion
+    python tools/install_forge.py --forge-root D:/apps/sd-webui-forge-classic --name TrashDiffusion
 """
 
 import argparse
@@ -22,7 +22,7 @@ ADAPTER_SRC = REPO_ROOT / "sd-webui-forge-classic"
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--forge-root", required=True, help="Path to sd-webui-forge-classic checkout")
-    ap.add_argument("--name", default="CrazyDiffusion", help="Folder name under extensions/")
+    ap.add_argument("--name", default="TrashDiffusion", help="Folder name under extensions/")
     ap.add_argument("--copy", action="store_true", help="Copy instead of symlink")
     args = ap.parse_args()
 

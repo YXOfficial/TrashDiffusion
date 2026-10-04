@@ -1,10 +1,10 @@
-# CrazyDiffusion
+# TrashDiffusion
 
 Personal guidance/sampling experiments, structured so upstream restructures
 don't nuke everything. Single source of truth + thin adapters.
 
 ```text
-CrazyDiffusion/
+TrashDiffusion/
     core/                      # PURE torch. No Forge/Comfy/Gradio imports.
         guidance.py            # GuidanceState/Pipeline + FDG/CFG-Zero/CFG-Ctrl...
         asag.py                # ASAG attention helpers

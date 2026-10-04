@@ -1,4 +1,4 @@
-# CrazyDiffusion — Forge Classic extension
+# TrashDiffusion — Forge Classic extension
 
 Thin Forge adapter. All guidance logic lives in `../core/` (pure torch, no
 Forge/Comfy/Gradio imports). This adapter only does UI + UNet patching via
@@ -11,16 +11,16 @@ import-time crashes.
 
 ```bash
 # Option 1: symlink (recommended, picks up updates on git pull)
-ln -s /path/to/CrazyDiffusion/sd-webui-forge-classic \
-      /path/to/sd-webui-forge-classic/extensions/CrazyDiffusion
+ln -s /path/to/TrashDiffusion/sd-webui-forge-classic \
+      /path/to/sd-webui-forge-classic/extensions/TrashDiffusion
 
 # Windows (Admin PowerShell):
 New-Item -ItemType SymbolicLink `
-  -Path "<forge>\extensions\CrazyDiffusion" `
+  -Path "<forge>\extensions\TrashDiffusion" `
   -Target "<repo>\sd-webui-forge-classic>"
 
 # Option 2: copy
-cp -r sd-webui-forge-classic <forge>/extensions/CrazyDiffusion
+cp -r sd-webui-forge-classic <forge>/extensions/TrashDiffusion
 ```
 
 Or run: `python tools/install_forge.py --forge-root <path-to-forge> [--copy]`
