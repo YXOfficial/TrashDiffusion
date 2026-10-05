@@ -19,6 +19,8 @@ download standalone binary into ~/.cache/trashdiffusion/.
 Env overrides:
     CLOUDFLARED_BIN            path to binary (skip lookup/download)
     CLOUDFLARED_PROTOCOL      default: http2 (survives Colab UDP blocks)
+    CLOUDFLARED_VERBOSE=1     echo raw cloudflared log (debug; default hidden,
+                               only TAG lines are shown)
     CLOUDFLARED_DEB=1         Linux: .deb + dpkg flow (needs root)
     CLOUDFLARED_NO_DOWNLOAD=1 fail instead of downloading
 """
@@ -116,18 +118,27 @@ def _ensure_binary():
 
 
 def _watch(proc, port):
+    # Swallow cloudflared's own log (INF banners, config warnings...); only
+    # our TAG lines reach the Forge console. URL is still parsed from the
+    # hidden stream. CLOUDFLARED_VERBOSE=1 restores raw echo for debugging.
     announced = False
+    verbose = os.environ.get("CLOUDFLARED_VERBOSE") == "1"
     assert proc.stdout is not None
     for line in proc.stdout:
-        sys.stdout.write(line)
-        sys.stdout.flush()
+        if verbose:
+            sys.stdout.write(line)
+            sys.stdout.flush()
         if not announced:
             m = URL_RE.search(line)
             if m:
                 announced = True
                 print(f"{TAG} tunnel UP: WebUI public at {m.group(0)}", flush=True)
                 print(f"{TAG} local stays at http://localhost:{port}", flush=True)
-    proc.wait()
+    rc = proc.wait()
+    if not announced:
+        print(f"{TAG} tunnel exited before announcing a URL (rc={rc}); "
+              "rerun with CLOUDFLARED_VERBOSE=1 for the raw cloudflared log",
+              flush=True)
 
 
 def maybe_hijack_share(cmd_opts, port):
